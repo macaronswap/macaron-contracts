@@ -1477,6 +1477,12 @@ interface IMigratorChef {
     function migrate(IBEP20 token) external returns (IBEP20);
 }
 
+interface ICakeStrategy {
+    function deposit(uint256 _amount) external;
+    function withdraw(uint256 _amount) external;
+    function withdrawToController(uint256 _amount) external;
+}
+
 // MasterChef is the master of Macaron. He can make Macaron and he is a fair guy.
 //
 // Note that it's ownable and the owner wields tremendous power. The ownership
@@ -1526,6 +1532,9 @@ contract MasterChef is Ownable {
     uint256 public BONUS_MULTIPLIER = 1;
     // The migrator contract. It has a lot of power. Can only be set through governance (owner).
     IMigratorChef public migrator;
+
+    // The CAKE STAKER!
+    ICakeStrategy public cakeStrategy;
 
     // Info of each pool.
     PoolInfo[] public poolInfo;
@@ -1618,6 +1627,11 @@ contract MasterChef is Ownable {
         }
     }
 
+    // Set the cake strategy contract. Can only be called by the owner.
+    function setCakeStrategy(ICakeStrategy _cakeStrategy) public onlyOwner {
+        cakeStrategy = _cakeStrategy;
+    }
+
     // Set the migrator contract. Can only be called by the owner.
     function setMigrator(IMigratorChef _migrator) public onlyOwner {
         migrator = _migrator;
@@ -1702,6 +1716,13 @@ contract MasterChef is Ownable {
         if (_amount > 0) {
             pool.lpToken.safeTransferFrom(address(msg.sender), address(this), _amount);
             user.amount = user.amount.add(_amount);
+
+            // Stake CLP to PC
+            if(pool.isCLP) {
+                require(address(cakeStrategy) != address(0), "cake strategy: no Strategy");
+
+                cakeStrategy.deposit(_amount);                
+            }
         }
         user.rewardDebt = user.amount.mul(pool.accMacaronPerShare).div(1e12);
         emit Deposit(msg.sender, _pid, _amount);
@@ -1743,6 +1764,13 @@ contract MasterChef is Ownable {
         if(_amount > 0) {
             pool.lpToken.safeTransferFrom(address(msg.sender), address(this), _amount);
             user.amount = user.amount.add(_amount);
+
+            // Stake CLP to PC
+            if(pool.isCLP) {
+                require(cakeStrategy != address(0), 'set Cake Strategy');
+                
+                pool.lpToken.safeTransfer(cakeStrategy)
+            }
         }
         user.rewardDebt = user.amount.mul(pool.accMacaronPerShare).div(1e12);
 

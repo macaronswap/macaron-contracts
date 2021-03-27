@@ -1511,13 +1511,17 @@ contract StrategyPancakeCake is StrategyBase {
         return "StrategyPancakeCake";
     }
 
-    function deposit() public override {
+    function deposit(uint256 _amount) public override {
+        //get deposited balance
+        IERC20(baseToken).transferFrom(msg.sender, address(this), _amount);
+
         uint256 _baseBal = IERC20(baseToken).balanceOf(address(this));
         if (_baseBal > 0) {
             _stakeCake();
 
             _baseBal = IERC20(baseToken).balanceOf(address(this));
             if (_baseBal > 0) {
+                // todo: distribute earning (create a flag and decide send earn to deployer)
                 _distributePerformance(_baseBal);
                 _stakeCake();
             }
