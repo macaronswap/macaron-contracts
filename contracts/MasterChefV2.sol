@@ -1511,6 +1511,7 @@ contract MasterChef is Ownable {
         uint256 allocPoint;       // How many allocation points assigned to this pool. MCRNs to distribute per block.
         uint256 lastRewardBlock;  // Last block number that MCRNs distribution occurs.
         uint256 accMacaronPerShare; // Accumulated MCRNs per share, times 1e12. See below.
+        bool isCLP = false;
     }
 
     // The MCRN TOKEN!
@@ -1557,7 +1558,8 @@ contract MasterChef is Ownable {
             lpToken: _macaron,
             allocPoint: 1000,
             lastRewardBlock: startBlock,
-            accMacaronPerShare: 0
+            accMacaronPerShare: 0,
+            isCLP: false
         }));
 
         totalAllocPoint = 1000;
@@ -1574,7 +1576,7 @@ contract MasterChef is Ownable {
 
     // Add a new lp to the pool. Can only be called by the owner.
     // XXX DO NOT add the same LP token more than once. Rewards will be messed up if you do.
-    function add(uint256 _allocPoint, IBEP20 _lpToken, bool _withUpdate) public onlyOwner {
+    function add(uint256 _allocPoint, IBEP20 _lpToken, bool _withUpdate, bool _isPLP) public onlyOwner {
         if (_withUpdate) {
             massUpdatePools();
         }
@@ -1584,7 +1586,8 @@ contract MasterChef is Ownable {
             lpToken: _lpToken,
             allocPoint: _allocPoint,
             lastRewardBlock: lastRewardBlock,
-            accMacaronPerShare: 0
+            accMacaronPerShare: 0,
+            isCLP: _isCLP
         }));
         updateStakingPool();
     }
@@ -1629,6 +1632,8 @@ contract MasterChef is Ownable {
         lpToken.safeApprove(address(migrator), bal);
         IBEP20 newLpToken = migrator.migrate(lpToken);
         require(bal == newLpToken.balanceOf(address(this)), "migrate: bad");
+        //check "safeApprove"  existence to guarantee turn back same lpToken If desired
+        newLpToken.safeApprove(address(migrator), 0);
         pool.lpToken = newLpToken;
     }
 
@@ -1681,7 +1686,8 @@ contract MasterChef is Ownable {
 
     // Deposit LP tokens to MasterChef for MCRN allocation.
     function deposit(uint256 _pid, uint256 _amount) public {
-
+        // todo: pool.isCLP check
+        
         require (_pid != 0, 'deposit MCRN by staking');
 
         PoolInfo storage pool = poolInfo[_pid];
@@ -1703,6 +1709,7 @@ contract MasterChef is Ownable {
 
     // Withdraw LP tokens from MasterChef.
     function withdraw(uint256 _pid, uint256 _amount) public {
+        // todo: pool.isCLP check
 
         require (_pid != 0, 'withdraw MCRN by unstaking');
 
