@@ -1000,6 +1000,7 @@ contract StrategyPancakeCake is StrategyBase {
     
     uint256 public buyBurnPercent = 0;
     address public cakeMasterChef;
+    address public cakeSyrupToken;
     address public macaron;
 
     // baseToken       =  (CAKE)
@@ -1009,15 +1010,20 @@ contract StrategyPancakeCake is StrategyBase {
         address _farmingToken,
         address _cakeMasterChef,
         address _pancakeRouter,
+        address _cakeSyrupToken,
         address _macaron,
         address _controller
     ) public {
         require(_initialized == false, "Strategy: Initialize must be false.");
         initialize(_baseToken, _farmingToken, _pancakeRouter, _controller);
         cakeMasterChef = _cakeMasterChef;
+        cakeSyrupToken = _cakeSyrupToken;
         macaron = _macaron;
 
         IERC20(baseToken).safeApprove(address(cakeMasterChef), type(uint256).max);
+        IERC20(baseToken).safeApprove(address(_controller), type(uint256).max);
+        IERC20(cakeSyrupToken).safeApprove(address(cakeMasterChef), type(uint256).max);
+        IERC20(cakeSyrupToken).safeApprove(address(_controller), type(uint256).max);
         
         _initialized = true;
     }
@@ -1027,18 +1033,22 @@ contract StrategyPancakeCake is StrategyBase {
     }
 
     function deposit(uint256 _amount) public override {
-        //get deposited balance
-        IERC20(baseToken).transferFrom(msg.sender, address(this), _amount);
-
         uint256 _baseBal = IERC20(baseToken).balanceOf(address(this));
+
+        require(_baseBal >= _amount, 'Strategy: amount did not deposit');
+
         if (_baseBal > 0) {
             _stakeCake();
+
+            uint256 _syrupBal = IERC20(cakeSyrupToken).balanceOf(address(this));
+            require(_syrupBal >= _amount, 'Strategy: wrong syrup amount');
+            IERC20(cakeSyrupToken).transfer(controller, _amount);
 
             _baseBal = IERC20(baseToken).balanceOf(address(this));
             if (_baseBal > 0) {
                 //Buy MCRN and burn if it is active
                 if(buyBurnPercent > 0) {
-                    _buyMacaronAndBurn(buyBurnPercent);
+                    _buyMacaronAndBurn(_baseBal, buyBurnPercent);
                 }
                 
                 _baseBal = IERC20(baseToken).balanceOf(address(this));
@@ -1069,12 +1079,7 @@ contract StrategyPancakeCake is StrategyBase {
         if (_reward > 0) {
             //Buy MCRN and burn if it is active
             if(buyBurnPercent > 0) {
-                _buyMacaronAndBurn(buyBurnPercent);
-            }
-            
-            uint256 _baseBal = IERC20(baseToken).balanceOf(address(this));
-            if (_baseBal > 0) {
-                _stakeCake();
+                _buyMacaronAndBurn(_reward, buyBurnPercent);
             }
         }
 
@@ -1099,7 +1104,7 @@ contract StrategyPancakeCake is StrategyBase {
         if (_baseBal > 0) {
             //Buy MCRN and burn if it is active
             if(buyBurnPercent > 0) {
-                _buyMacaronAndBurn(buyBurnPercent);
+                _buyMacaronAndBurn(_baseBal, buyBurnPercent);
             }
             
             _baseBal = IERC20(baseToken).balanceOf(address(this));
@@ -1113,9 +1118,8 @@ contract StrategyPancakeCake is StrategyBase {
         lastHarvestTimeStamp = block.timestamp;
     }
 
-    function _buyMacaronAndBurn(uint256 percent) internal {
-        uint256 _baseTokenBal = IERC20(baseToken).balanceOf(address(this));
-        _swapTokens(address(macaron), address(baseToken), _baseTokenBal.mul(percent).div(100));
+    function _buyMacaronAndBurn(uint256 amount, uint256 percent) internal {
+        _swapTokens(address(macaron), address(baseToken), amount.mul(percent).div(100));
         uint256 _macaronBal = IERC20(macaron).balanceOf(address(this));
         IERC20(macaron).transfer(address(0), _macaronBal);
     }

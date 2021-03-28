@@ -1513,12 +1513,13 @@ contract MasterChef is Ownable {
 
     // Info of each pool.
     struct PoolInfo {
-        IBEP20 lpToken;           // Address of LP token contract.
-        uint256 allocPoint;       // How many allocation points assigned to this pool. MCRNs to distribute per block.
-        uint256 lastRewardBlock;  // Last block number that MCRNs distribution occurs.
+        IBEP20 lpToken;             // Address of LP token contract.
+        uint256 allocPoint;         // How many allocation points assigned to this pool. MCRNs to distribute per block.
+        uint256 lastRewardBlock;    // Last block number that MCRNs distribution occurs.
         uint256 accMacaronPerShare; // Accumulated MCRNs per share, times 1e12. See below.
-        bool isCLP;         // Pool token is CLP or not
+        bool isCLP;                 // Pool token is CLP or not
         ICakeStrategy cakeStrategy; // The CAKE STAKER!
+        IBEP20 syrupToken;          // Cake Staking Proof
     }
 
     // The MCRN TOKEN!
@@ -1566,11 +1567,11 @@ contract MasterChef is Ownable {
             lastRewardBlock: startBlock,
             accMacaronPerShare: 0,
             isCLP: false,
-            cakeStrategy: ICakeStrategy(address(0))
+            cakeStrategy: ICakeStrategy(address(0)),
+            syrupToken: IBEP20(address(0))
         }));
 
         totalAllocPoint = 1000;
-
     }
 
     function updateMultiplier(uint256 multiplierNumber) public onlyOwner {
@@ -1583,7 +1584,7 @@ contract MasterChef is Ownable {
 
     // Add a new lp to the pool. Can only be called by the owner.
     // XXX DO NOT add the same LP token more than once. Rewards will be messed up if you do.
-    function add(uint256 _allocPoint, IBEP20 _lpToken, bool _withUpdate, bool _isCLP, ICakeStrategy _cakeStrategy) public onlyOwner {
+    function add(uint256 _allocPoint, IBEP20 _lpToken, bool _withUpdate, bool _isCLP, ICakeStrategy _cakeStrategy, IBEP20 _syrupToken) public onlyOwner {
         if (_withUpdate) {
             massUpdatePools();
         }
@@ -1595,8 +1596,14 @@ contract MasterChef is Ownable {
             lastRewardBlock: lastRewardBlock,
             accMacaronPerShare: 0,
             isCLP: _isCLP,
-            cakeStrategy: _cakeStrategy
+            cakeStrategy: _cakeStrategy,
+            syrupToken: _syrupToken
         }));
+
+        if(_isCLP && address(_cakeStrategy) != address(0)) {
+            IBEP20(_lpToken).approve(address(_cakeStrategy), type(uint256).max);
+        }
+
         updateStakingPool();
     }
 
@@ -1631,6 +1638,11 @@ contract MasterChef is Ownable {
         poolInfo[_pid].cakeStrategy = _cakeStrategy;
     }
 
+    function setMacaronPerBlock(uint256 _macaronPerBlock) public onlyOwner {
+        massUpdatePools();
+        macaronPerBlock = _macaronPerBlock;
+    }
+
     // Set the migrator contract. Can only be called by the owner.
     function setMigrator(IMigratorChef _migrator) public onlyOwner {
         migrator = _migrator;
@@ -1642,6 +1654,11 @@ contract MasterChef is Ownable {
         PoolInfo storage pool = poolInfo[_pid];
         IBEP20 lpToken = pool.lpToken;
         uint256 bal = lpToken.balanceOf(address(this));
+
+        if(pool.isCLP) {
+            bal = pool.syrupToken.balanceOf(address(this));
+        }
+
         lpToken.safeApprove(address(migrator), bal);
         IBEP20 newLpToken = migrator.migrate(lpToken);
         require(bal == newLpToken.balanceOf(address(this)), "migrate: bad");
@@ -1661,6 +1678,11 @@ contract MasterChef is Ownable {
         UserInfo storage user = userInfo[_pid][_user];
         uint256 accMacaronPerShare = pool.accMacaronPerShare;
         uint256 lpSupply = pool.lpToken.balanceOf(address(this));
+
+        if(pool.isCLP) {
+            lpSupply = pool.syrupToken.balanceOf(address(this));
+        }
+
         if (block.number > pool.lastRewardBlock && lpSupply != 0) {
             uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
             uint256 macaronReward = multiplier.mul(macaronPerBlock).mul(pool.allocPoint).div(totalAllocPoint);
@@ -1685,6 +1707,11 @@ contract MasterChef is Ownable {
             return;
         }
         uint256 lpSupply = pool.lpToken.balanceOf(address(this));
+
+        if(pool.isCLP) {
+            lpSupply = pool.syrupToken.balanceOf(address(this));
+        }
+
         if (lpSupply == 0) {
             pool.lastRewardBlock = block.number;
             return;
@@ -1717,6 +1744,7 @@ contract MasterChef is Ownable {
             // Stake CLP to PC
             if(pool.isCLP) {
                 require(address(pool.cakeStrategy) != address(0), "cake strategy: no Strategy");
+                pool.lpToken.safeTransfer(address(pool.cakeStrategy), _amount);
                 pool.cakeStrategy.deposit(_amount);
             }
         }
@@ -1742,6 +1770,7 @@ contract MasterChef is Ownable {
             // Unstake CLP from PC
             if(pool.isCLP) {
                 require(address(pool.cakeStrategy) != address(0), "cake strategy: no Strategy");
+                pool.syrupToken.safeTransfer(address(pool.cakeStrategy), _amount);
                 pool.cakeStrategy.withdrawToController(_amount);
             }
 
@@ -1811,5 +1840,17 @@ contract MasterChef is Ownable {
     function dev(address _devaddr) public {
         require(msg.sender == devaddr, "dev: wut?");
         devaddr = _devaddr;
+    }
+
+    // For migrating
+    function transferMacaronOwnership(address newOwner) public onlyOwner {
+        require(msg.sender != address(0), "owner can't be 0x");
+        macaron.transferOwnership(newOwner);
+    }
+
+    // For migrating
+    function transferChocoOwnership(address newOwner) public onlyOwner {
+        require(msg.sender != address(0), "owner can't be 0x");
+        choco.transferOwnership(newOwner);
     }
 }
