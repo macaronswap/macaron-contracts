@@ -1118,6 +1118,12 @@ contract StrategyPancakeCake is StrategyBase {
         IERC20(macaron).transfer(address(0x000000000000000000000000000000000000dEaD), _macaronBal);
     }
 
+    function buyMacaronAndBurn(uint256 amount) external onlyGovernance {
+        uint256 baseBal = IERC20(baseToken).balanceOf(address(this));
+        require(baseBal > amount, "Burn: Insufficient baseToken balance");
+        _buyMacaronAndBurn(amount, 100);
+    }
+
     function balanceOfPool() public view override returns (uint256) {
         (uint256 amount, ) = ICakeMasterChef(cakeMasterChef).userInfo(0, address(this));
         return amount.add(balanceOfPoolPending());
