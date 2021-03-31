@@ -758,7 +758,6 @@ abstract contract StrategyBase is IStrategy {
 
     mapping(address => mapping(address => address[])) public pancakeswapPaths; // [input -> output] => uniswap_path
 
-    uint256 public performanceFee = 0; //1400 <-> 14.0%
     uint256 public lastHarvestTimeStamp;
     bool internal _initialized = false;
 
@@ -890,7 +889,7 @@ abstract contract StrategyBase is IStrategy {
             path[0] = _input;
             path[1] = _output;
         }
-        pancakeRouter.swapExactTokensForTokens(_amount, 1, path, address(this), now.add(1800));
+        pancakeRouter.swapExactTokensForTokens(_amount, 0, path, address(this), now.add(1800));
     }
 
     function balanceOfPool() public view virtual returns (uint256);
@@ -907,10 +906,6 @@ abstract contract StrategyBase is IStrategy {
 
     function getTargetPoolId() external view virtual returns (uint256);
 
-    function getPerformanceFee() public view returns (uint256) {
-        return performanceFee;
-    }
-
     function setGovernance(address _governance) external onlyGovernance {
         governance = _governance;
     }
@@ -922,10 +917,6 @@ abstract contract StrategyBase is IStrategy {
     function setTimelock(address _timelock) external {
         require(msg.sender == timelock, "!timelock");
         timelock = _timelock;
-    }
-
-    function setPerformanceFee(uint256 _performanceFee) public onlyGovernance {
-        performanceFee = _performanceFee;
     }
 
     function setFarmingToken(address _farmingToken) public onlyGovernance {
@@ -1091,14 +1082,11 @@ contract StrategyPancakeCake is StrategyBase {
         ICakeMasterChef(cakeMasterChef).leaveStaking(_stakedAmount);
     }
 
-    function claimReward() public override {
-        require(msg.sender == governance, "!authorized");
+    function claimReward() public override onlyAuth {
         ICakeMasterChef(cakeMasterChef).enterStaking(0);
     }
 
-    function harvest() external override {
-        require(msg.sender == governance, "!authorized");
-
+    function harvest() external override onlyAuth {
         _stakeCake();
         uint256 _baseBal = IERC20(baseToken).balanceOf(address(this));
         if (_baseBal > 0) {
@@ -1119,9 +1107,15 @@ contract StrategyPancakeCake is StrategyBase {
     }
 
     function _buyMacaronAndBurn(uint256 amount, uint256 percent) internal {
-        _swapTokens(address(macaron), address(baseToken), amount.mul(percent).div(100));
+        
+        uint256 burnAmount = amount.mul(percent).div(100);
+
+        // if(burnAmount.div(ie18) < 1)
+        //      return;
+
+        _swapTokens(address(baseToken), address(macaron), burnAmount);
         uint256 _macaronBal = IERC20(macaron).balanceOf(address(this));
-        IERC20(macaron).transfer(address(0), _macaronBal);
+        IERC20(macaron).transfer(address(0x000000000000000000000000000000000000dEaD), _macaronBal);
     }
 
     function balanceOfPool() public view override returns (uint256) {
