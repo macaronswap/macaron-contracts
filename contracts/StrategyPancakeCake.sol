@@ -1032,7 +1032,7 @@ contract StrategyPancakeCake is StrategyBase {
         return "StrategyPancakeCake";
     }
 
-    function deposit(uint256 _amount) public override {
+    function deposit(uint256 _amount) public override onlyAuth {
         uint256 _baseBal = IERC20(baseToken).balanceOf(address(this));
 
         require(_baseBal >= _amount, 'Strategy: amount did not deposit');

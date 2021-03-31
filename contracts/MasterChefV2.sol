@@ -1542,6 +1542,8 @@ contract MasterChef is Ownable {
     uint256 public totalAllocPoint = 0;
     // The block number when MCRN mining starts.
     uint256 public startBlock;
+    // MCRN share in the total
+    uint256 public macaronPoolRewardRatio = 3;
 
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
@@ -1627,7 +1629,7 @@ contract MasterChef is Ownable {
             points = points.add(poolInfo[pid].allocPoint);
         }
         if (points != 0) {
-            points = points.div(3);
+            points = points.div(macaronPoolRewardRatio);
             totalAllocPoint = totalAllocPoint.sub(poolInfo[0].allocPoint).add(points);
             poolInfo[0].allocPoint = points;
         }
@@ -1639,8 +1641,13 @@ contract MasterChef is Ownable {
     }
 
     function setMacaronPerBlock(uint256 _macaronPerBlock) public onlyOwner {
-        massUpdatePools();
         macaronPerBlock = _macaronPerBlock;
+        massUpdatePools();
+    }
+
+    function setMacaronPoolRewardRatio(uint256 _macaronPoolRewardRatio) public onlyOwner {
+        macaronPoolRewardRatio = _macaronPoolRewardRatio;
+        updateStakingPool();
     }
 
     // Set the migrator contract. Can only be called by the owner.
