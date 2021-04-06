@@ -505,210 +505,11 @@ library SafeERC20 {
     }
 }
 
-interface IUniswapV2Router {
-    function factory() external pure returns (address);
-
-    function WETH() external pure returns (address);
-
-    function addLiquidity(
-        address tokenA,
-        address tokenB,
-        uint256 amountADesired,
-        uint256 amountBDesired,
-        uint256 amountAMin,
-        uint256 amountBMin,
-        address to,
-        uint256 deadline
-    )
-        external
-        returns (
-            uint256 amountA,
-            uint256 amountB,
-            uint256 liquidity
-        );
-
-    function addLiquidityETH(
-        address token,
-        uint256 amountTokenDesired,
-        uint256 amountTokenMin,
-        uint256 amountETHMin,
-        address to,
-        uint256 deadline
-    )
-        external
-        payable
-        returns (
-            uint256 amountToken,
-            uint256 amountETH,
-            uint256 liquidity
-        );
-
-    function removeLiquidity(
-        address tokenA,
-        address tokenB,
-        uint256 liquidity,
-        uint256 amountAMin,
-        uint256 amountBMin,
-        address to,
-        uint256 deadline
-    ) external returns (uint256 amountA, uint256 amountB);
-
-    function removeLiquidityETH(
-        address token,
-        uint256 liquidity,
-        uint256 amountTokenMin,
-        uint256 amountETHMin,
-        address to,
-        uint256 deadline
-    ) external returns (uint256 amountToken, uint256 amountETH);
-
-    function removeLiquidityWithPermit(
-        address tokenA,
-        address tokenB,
-        uint256 liquidity,
-        uint256 amountAMin,
-        uint256 amountBMin,
-        address to,
-        uint256 deadline,
-        bool approveMax,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external returns (uint256 amountA, uint256 amountB);
-
-    function removeLiquidityETHWithPermit(
-        address token,
-        uint256 liquidity,
-        uint256 amountTokenMin,
-        uint256 amountETHMin,
-        address to,
-        uint256 deadline,
-        bool approveMax,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external returns (uint256 amountToken, uint256 amountETH);
-
-    function swapExactTokensForTokens(
-        uint256 amountIn,
-        uint256 amountOutMin,
-        address[] calldata path,
-        address to,
-        uint256 deadline
-    ) external returns (uint256[] memory amounts);
-
-    function swapTokensForExactTokens(
-        uint256 amountOut,
-        uint256 amountInMax,
-        address[] calldata path,
-        address to,
-        uint256 deadline
-    ) external returns (uint256[] memory amounts);
-
-    function swapExactETHForTokens(
-        uint256 amountOutMin,
-        address[] calldata path,
-        address to,
-        uint256 deadline
-    ) external payable returns (uint256[] memory amounts);
-
-    function swapTokensForExactETH(
-        uint256 amountOut,
-        uint256 amountInMax,
-        address[] calldata path,
-        address to,
-        uint256 deadline
-    ) external returns (uint256[] memory amounts);
-
-    function swapExactTokensForETH(
-        uint256 amountIn,
-        uint256 amountOutMin,
-        address[] calldata path,
-        address to,
-        uint256 deadline
-    ) external returns (uint256[] memory amounts);
-
-    function swapETHForExactTokens(
-        uint256 amountOut,
-        address[] calldata path,
-        address to,
-        uint256 deadline
-    ) external payable returns (uint256[] memory amounts);
-
-    function quote(
-        uint256 amountA,
-        uint256 reserveA,
-        uint256 reserveB
-    ) external pure returns (uint256 amountB);
-
-    function getAmountOut(
-        uint256 amountIn,
-        uint256 reserveIn,
-        uint256 reserveOut
-    ) external pure returns (uint256 amountOut);
-
-    function getAmountIn(
-        uint256 amountOut,
-        uint256 reserveIn,
-        uint256 reserveOut
-    ) external pure returns (uint256 amountIn);
-
-    function getAmountsOut(uint256 amountIn, address[] calldata path) external view returns (uint256[] memory amounts);
-
-    function getAmountsIn(uint256 amountOut, address[] calldata path) external view returns (uint256[] memory amounts);
-
-    function removeLiquidityETHSupportingFeeOnTransferTokens(
-        address token,
-        uint256 liquidity,
-        uint256 amountTokenMin,
-        uint256 amountETHMin,
-        address to,
-        uint256 deadline
-    ) external returns (uint256 amountETH);
-
-    function removeLiquidityETHWithPermitSupportingFeeOnTransferTokens(
-        address token,
-        uint256 liquidity,
-        uint256 amountTokenMin,
-        uint256 amountETHMin,
-        address to,
-        uint256 deadline,
-        bool approveMax,
-        uint8 v,
-        bytes32 r,
-        bytes32 s
-    ) external returns (uint256 amountETH);
-
-    function swapExactTokensForTokensSupportingFeeOnTransferTokens(
-        uint256 amountIn,
-        uint256 amountOutMin,
-        address[] calldata path,
-        address to,
-        uint256 deadline
-    ) external;
-
-    function swapExactETHForTokensSupportingFeeOnTransferTokens(
-        uint256 amountOutMin,
-        address[] calldata path,
-        address to,
-        uint256 deadline
-    ) external payable;
-
-    function swapExactTokensForETHSupportingFeeOnTransferTokens(
-        uint256 amountIn,
-        uint256 amountOutMin,
-        address[] calldata path,
-        address to,
-        uint256 deadline
-    ) external;
-}
-
 interface IStrategy {
     event Deposit(address token, uint256 amount);
     event Withdraw(address token, uint256 amount, address to);
-    event Harvest();
 
-    function baseToken() external view returns (address);
+    function clpToken() external view returns (address);
 
     function deposit(uint256 _amount) external;
 
@@ -719,14 +520,17 @@ interface IStrategy {
     function withdrawToController(uint256 _amount) external;
 
     function skim() external;
-
-    function harvest() external;
+    function skimCLP() external;
+    function skimRewards() external;
 
     function withdrawAll() external returns (uint256);
 
     function balanceOf() external view returns (uint256);
+}
 
-    function beforeDeposit() external;
+interface IMagicBox {
+    function mint(address _to, uint256 _amount) external;
+    function burn(address _from ,uint256 _amount) external;
 }
 
 /*
@@ -747,35 +551,31 @@ abstract contract StrategyBase is IStrategy {
     using Address for address;
     using SafeMath for uint256;
 
-    IUniswapV2Router public pancakeRouter;  // PancakeRouter
-
-    address public override baseToken;
-    address public farmingToken;
-
+    address public override clpToken;
+    uint256 public clpPid;
+    address public rewardToken;
     address public controller;  // Macaron MasterChef
+    address public magicBoxToken;
     address public governance;
     address public timelock = address(0x6A86eaC1B23e0Bffd7a14B331B2F4b5cB7dD8fe0);
 
     mapping(address => mapping(address => address[])) public pancakeswapPaths; // [input -> output] => uniswap_path
 
-    uint256 public lastHarvestTimeStamp;
     bool internal _initialized = false;
 
     function initialize(
-        address _baseToken,
-        address _farmingToken,
-        address _pancakeRouter,
-        address _controller
+        address _clpToken,
+        uint256 _clpPid,
+        address _rewardToken,
+        address _controller,
+        address _magicBoxToken
     ) internal {
-        baseToken = _baseToken;
-        farmingToken = _farmingToken;
+        clpToken = _clpToken;
+        clpPid = _clpPid;
+        rewardToken = _rewardToken;
         governance = msg.sender;
-        pancakeRouter = IUniswapV2Router(_pancakeRouter);
         controller = _controller;
-
-        if (farmingToken != address(0)) {
-            IERC20(farmingToken).safeApprove(address(pancakeRouter), type(uint256).max);
-        }
+        magicBoxToken = _magicBoxToken;
     }
 
     modifier onlyGovernance() {
@@ -803,104 +603,77 @@ abstract contract StrategyBase is IStrategy {
         _token.safeApprove(_spender, _amount);
     }
 
-    function setPancakeRouter(IUniswapV2Router _pancakeRouter) external onlyGovernance {
-        pancakeRouter = _pancakeRouter;
-        if (farmingToken != address(0)) {
-            IERC20(farmingToken).safeApprove(address(pancakeRouter), type(uint256).max);
-        }
-    }
-
-    function setPancakeRouterPath(
-        address _input,
-        address _output,
-        address[] memory _path
-    ) public onlyGovernance {
-        pancakeswapPaths[_input][_output] = _path;
-    }
-
-    function beforeDeposit() external virtual override onlyGovernance {}
-
     function deposit(uint256 _amount) external virtual override onlyAuth {}
 
     function skim() external override onlyGovernance {
-        IERC20(baseToken).safeTransfer(governance, IERC20(baseToken).balanceOf(address(this)));
+        IERC20(clpToken).safeTransfer(governance, IERC20(clpToken).balanceOf(address(this)));
+        IERC20(rewardToken).safeTransfer(governance, IERC20(rewardToken).balanceOf(address(this)));
+    }
+    
+    function skimCLP() external override onlyGovernance {
+        IERC20(clpToken).safeTransfer(governance, IERC20(clpToken).balanceOf(address(this)));
+    }
+    
+    function skimRewards() external override onlyGovernance {
+        IERC20(rewardToken).safeTransfer(governance, IERC20(rewardToken).balanceOf(address(this)));
     }
 
+    // Withdraw rewards and other tokens to govarnance
     function withdraw(address _asset) external override onlyGovernance returns (uint256 balance) {
-        require(baseToken != _asset, "lpPair");
+        require(clpToken != _asset, "lpPair");
 
         balance = IERC20(_asset).balanceOf(address(this));
         IERC20(_asset).safeTransfer(governance, balance);
         emit Withdraw(_asset, balance, governance);
     }
 
+    // Withdraw CLP amount to controller
     function withdrawToController(uint256 _amount) external override onlyAuth {
         require(controller != address(0), "!controller"); // additional protection so we don't burn the funds
 
-        uint256 _balance = IERC20(baseToken).balanceOf(address(this));
+        uint256 _balance = IERC20(clpToken).balanceOf(address(this));
         if (_balance < _amount) {
-            _amount = _withdrawSome(_amount.sub(_balance));
+            _amount = _unstakeSome(_amount.sub(_balance));
             _amount = _amount.add(_balance);
         }
 
-        IERC20(baseToken).safeTransfer(controller, _amount);
-        emit Withdraw(baseToken, _amount, controller);
+        IERC20(clpToken).safeTransfer(controller, _amount);
+        IMagicBox(magicBoxToken).burn(msg.sender, _amount);
+        emit Withdraw(clpToken, _amount, controller);
     }
 
-    function _withdrawSome(uint256 _amount) internal virtual returns (uint256);
+    function _unstakeSome(uint256 _amount) internal virtual returns (uint256);
 
     // Withdraw partial funds, normally used with a vault withdrawal
     function withdraw(uint256 _amount) external override onlyGovernance returns (uint256) {
-        uint256 _balance = IERC20(baseToken).balanceOf(address(this));
+        uint256 _balance = IERC20(clpToken).balanceOf(address(this));
         if (_balance < _amount) {
-            _amount = _withdrawSome(_amount.sub(_balance));
+            _amount = _unstakeSome(_amount.sub(_balance));
             _amount = _amount.add(_balance);
         }
 
-        IERC20(baseToken).safeTransfer(address(governance), _amount);
-        emit Withdraw(baseToken, _amount, address(governance));
+        IERC20(clpToken).safeTransfer(address(governance), _amount);
+        emit Withdraw(clpToken, _amount, address(governance));
         return _amount;
     }
 
     // Withdraw all funds, normally used when migrating strategies
     function withdrawAll() external override onlyGovernance returns (uint256 balance) {
-        _withdrawAll();
-        balance = IERC20(baseToken).balanceOf(address(this));
-        IERC20(baseToken).safeTransfer(address(governance), balance);
-        emit Withdraw(baseToken, balance, address(governance));
+        _unstakeAll();
+        balance = IERC20(clpToken).balanceOf(address(this));
+        IERC20(clpToken).safeTransfer(address(governance), balance);
+        emit Withdraw(clpToken, balance, address(governance));
     }
 
-    function _withdrawAll() internal virtual;
+    function _unstakeAll() internal virtual;
 
     function claimReward() public virtual;
-
-    function _swapTokens(
-        address _input,
-        address _output,
-        uint256 _amount
-    ) internal {
-        if (_input == _output) return;
-        address[] memory path = pancakeswapPaths[_input][_output];
-        
-        // use PancakeSwap
-        if (path.length == 0) {
-            // path: _input -> _output
-            path = new address[](2);
-            path[0] = _input;
-            path[1] = _output;
-        }
-        pancakeRouter.swapExactTokensForTokens(_amount, 0, path, address(this), now.add(1800));
-    }
 
     function balanceOfPool() public view virtual returns (uint256);
 
     function balanceOf() public view override returns (uint256) {
-        return IERC20(baseToken).balanceOf(address(this)).add(balanceOfPool());
+        return IERC20(clpToken).balanceOf(address(this)).add(balanceOfPool());
     }
-
-    function claimable_tokens() external view virtual returns (address[] memory, uint256[] memory);
-
-    function claimable_token() external view virtual returns (address, uint256);
 
     function getTargetFarm() external view virtual returns (address);
 
@@ -919,12 +692,8 @@ abstract contract StrategyBase is IStrategy {
         timelock = _timelock;
     }
 
-    function setFarmingToken(address _farmingToken) public onlyGovernance {
-        farmingToken = _farmingToken;
-    }
-
-    function setApproveRouterForToken(address _token, uint256 _amount) public onlyGovernance {
-        IERC20(_token).safeApprove(address(pancakeRouter), _amount);
+    function setrewardToken(address _rewardToken) public onlyGovernance {
+        rewardToken = _rewardToken;
     }
 
     event ExecuteTransaction(address indexed target, uint256 value, string signature, bytes data);
@@ -987,162 +756,96 @@ interface ICakeMasterChef {
  Where possible, strategies must remain as immutable as possible, instead of updating variables, we update the contract by linking it in the controller
 
 */
-contract StrategyPancakeCake is StrategyBase {
+contract StrategyPancakeCLP is StrategyBase {
     
-    uint256 public buyBurnPercent = 0;
     address public cakeMasterChef;
-    address public cakeSyrupToken;
-    address public macaron;
 
-    // baseToken       =  (CAKE)
-    // farmingToken =  (CAKE)
+    // clpToken       =  (CAKE LP)
+    // rewardToken =  (CAKE)
     function initialize(
-        address _baseToken,
-        address _farmingToken,
+        address _clpToken,
+        uint256 _clpPid,
+        address _rewardToken,
         address _cakeMasterChef,
-        address _pancakeRouter,
-        address _cakeSyrupToken,
-        address _macaron,
-        address _controller
+        address _controller,
+        address _magicBoxToken
     ) public {
         require(_initialized == false, "Strategy: Initialize must be false.");
-        initialize(_baseToken, _farmingToken, _pancakeRouter, _controller);
+        initialize(_clpToken, _clpPid, _rewardToken, _controller, _magicBoxToken);
         cakeMasterChef = _cakeMasterChef;
-        cakeSyrupToken = _cakeSyrupToken;
-        macaron = _macaron;
 
-        IERC20(baseToken).safeApprove(address(cakeMasterChef), type(uint256).max);
-        IERC20(baseToken).safeApprove(address(_controller), type(uint256).max);
-        IERC20(cakeSyrupToken).safeApprove(address(cakeMasterChef), type(uint256).max);
-        IERC20(cakeSyrupToken).safeApprove(address(_controller), type(uint256).max);
+        IERC20(clpToken).safeApprove(address(cakeMasterChef), type(uint256).max);
+        IERC20(clpToken).safeApprove(address(_controller), type(uint256).max);
+        IERC20(magicBoxToken).safeApprove(address(_controller), type(uint256).max);
         
         _initialized = true;
     }
 
     function getName() public pure override returns (string memory) {
-        return "StrategyPancakeCake";
+        return "MacaronStrategyPancakeCLP";
     }
 
     function deposit(uint256 _amount) public override onlyAuth {
-        uint256 _baseBal = IERC20(baseToken).balanceOf(address(this));
+        uint256 _baseBal = IERC20(clpToken).balanceOf(address(this));
 
         require(_baseBal >= _amount, 'Strategy: amount did not deposit');
 
         if (_baseBal > 0) {
-            _stakeCake();
-
-            uint256 _syrupBal = IERC20(cakeSyrupToken).balanceOf(address(this));
-            require(_syrupBal >= _amount, 'Strategy: wrong syrup amount');
-            IERC20(cakeSyrupToken).transfer(controller, _amount);
-
-            _baseBal = IERC20(baseToken).balanceOf(address(this));
-            if (_baseBal > 0) {
-                //Buy MCRN and burn if it is active
-                if(buyBurnPercent > 0) {
-                    _buyMacaronAndBurn(_baseBal, buyBurnPercent);
-                }
-                
-                _baseBal = IERC20(baseToken).balanceOf(address(this));
-                if (_baseBal > 0) {
-                    _stakeCake();
-                }
-            }
+            // stake Lp tokens on pcake
+            _stakeCakeLP();
+            // distribute rewards
+            _rewardDistribution();
+            // mint proof token for Lp tokes (this is necessary for MasterChef can withdraw Lp.)
+            IMagicBox(magicBoxToken).mint(msg.sender, _amount);
         }
     }
 
-    function _stakeCake() internal {
-        uint256 _baseBal = IERC20(baseToken).balanceOf(address(this));
-        ICakeMasterChef(cakeMasterChef).enterStaking(_baseBal);
-        emit Deposit(baseToken, _baseBal);
+    function _stakeCakeLP() internal {
+        require(clpPid != 0, "StakeCakeLP:Wrong pid!");
+        
+        uint256 _baseBal = IERC20(clpToken).balanceOf(address(this));
+        ICakeMasterChef(cakeMasterChef).deposit(clpPid, _baseBal);
+        emit Deposit(clpToken, _baseBal);
     }
 
-    function _withdrawSome(uint256 _amount) internal override returns (uint256) {
-        (uint256 _stakedAmount, ) = ICakeMasterChef(cakeMasterChef).userInfo(0, address(this));
+    function _unstakeSome(uint256 _amount) internal override returns (uint256) {
+        (uint256 _stakedAmount, ) = ICakeMasterChef(cakeMasterChef).userInfo(clpPid, address(this));
         if (_amount > _stakedAmount) {
             _amount = _stakedAmount;
         }
 
-        uint256 _before = IERC20(baseToken).balanceOf(address(this));
-        ICakeMasterChef(cakeMasterChef).leaveStaking(_amount);
-        uint256 _after = IERC20(baseToken).balanceOf(address(this));
-
-        uint256 _reward = _after.sub(_before).sub(_amount);
-        if (_reward > 0) {
-            //Buy MCRN and burn if it is active
-            if(buyBurnPercent > 0) {
-                _buyMacaronAndBurn(_reward, buyBurnPercent);
-            }
-        }
-
+        ICakeMasterChef(cakeMasterChef).withdraw(clpPid, _amount);
+        _rewardDistribution();
+    
         return _amount;
     }
 
-    function _withdrawAll() internal override {
-        (uint256 _stakedAmount, ) = ICakeMasterChef(cakeMasterChef).userInfo(0, address(this));
-        ICakeMasterChef(cakeMasterChef).leaveStaking(_stakedAmount);
+    function _unstakeAll() internal override {
+        (uint256 _stakedAmount, ) = ICakeMasterChef(cakeMasterChef).userInfo(clpPid, address(this));
+        ICakeMasterChef(cakeMasterChef).withdraw(clpPid, _stakedAmount);
+        
+        _rewardDistribution();
+    }
+    
+    function _rewardDistribution() internal {
+        uint256 _rewardBalance = IERC20(rewardToken).balanceOf(address(this));
+        if (_rewardBalance > 0) {
+            //Send rewards to govarnance
+            IERC20(rewardToken).safeTransfer(address(governance), _rewardBalance);
+        }
     }
 
     function claimReward() public override onlyAuth {
-        ICakeMasterChef(cakeMasterChef).enterStaking(0);
-    }
-
-    function harvest() external override onlyAuth {
-        _stakeCake();
-        uint256 _baseBal = IERC20(baseToken).balanceOf(address(this));
-        if (_baseBal > 0) {
-            //Buy MCRN and burn if it is active
-            if(buyBurnPercent > 0) {
-                _buyMacaronAndBurn(_baseBal, buyBurnPercent);
-            }
-            
-            _baseBal = IERC20(baseToken).balanceOf(address(this));
-            if (_baseBal > 0) {
-                _stakeCake();
-            }
-
-            emit Harvest();
-        }
-
-        lastHarvestTimeStamp = block.timestamp;
-    }
-
-    function _buyMacaronAndBurn(uint256 amount, uint256 percent) internal {
-        
-        uint256 burnAmount = amount.mul(percent).div(100);
-
-        // if(burnAmount.div(ie18) < 1)
-        //      return;
-
-        _swapTokens(address(baseToken), address(macaron), burnAmount);
-        uint256 _macaronBal = IERC20(macaron).balanceOf(address(this));
-        IERC20(macaron).transfer(address(0x000000000000000000000000000000000000dEaD), _macaronBal);
-    }
-
-    function buyMacaronAndBurn(uint256 amount) external onlyGovernance {
-        uint256 baseBal = IERC20(baseToken).balanceOf(address(this));
-        require(baseBal > amount, "Burn: Insufficient baseToken balance");
-        _buyMacaronAndBurn(amount, 100);
+        ICakeMasterChef(cakeMasterChef).deposit(clpPid, 0);
     }
 
     function balanceOfPool() public view override returns (uint256) {
-        (uint256 amount, ) = ICakeMasterChef(cakeMasterChef).userInfo(0, address(this));
-        return amount.add(balanceOfPoolPending());
+        (uint256 amount, ) = ICakeMasterChef(cakeMasterChef).userInfo(clpPid, address(this));
+        return amount;
     }
 
     function balanceOfPoolPending() public view returns (uint256) {
-        return ICakeMasterChef(cakeMasterChef).pendingCake(0, address(this));
-    }
-
-    function claimable_tokens() external view override returns (address[] memory farmToken, uint256[] memory totalDistributedValue) {
-        farmToken = new address[](1);
-        totalDistributedValue = new uint256[](1);
-        farmToken[0] = farmingToken;
-        totalDistributedValue[0] = ICakeMasterChef(cakeMasterChef).pendingCake(0, address(this));
-    }
-
-    function claimable_token() external view override returns (address farmToken, uint256 totalDistributedValue) {
-        farmToken = farmingToken;
-        totalDistributedValue = ICakeMasterChef(cakeMasterChef).pendingCake(0, address(this));
+        return ICakeMasterChef(cakeMasterChef).pendingCake(clpPid, address(this));
     }
 
     function getTargetFarm() external view override returns (address) {
@@ -1150,7 +853,7 @@ contract StrategyPancakeCake is StrategyBase {
     }
 
     function getTargetPoolId() external view override returns (uint256) {
-        return 0;
+        return clpPid;
     }
 
     /**
@@ -1158,17 +861,13 @@ contract StrategyPancakeCake is StrategyBase {
      * vault, ready to be migrated to the new strat.
      */
     function retireStrat() external onlyGovernance {
-        ICakeMasterChef(cakeMasterChef).emergencyWithdraw(0);
+        ICakeMasterChef(cakeMasterChef).emergencyWithdraw(clpPid);
 
-        uint256 baseBal = IERC20(baseToken).balanceOf(address(this));
-        IERC20(baseToken).transfer(address(governance), baseBal);
+        uint256 baseBal = IERC20(clpToken).balanceOf(address(this));
+        IERC20(clpToken).transfer(address(governance), baseBal);
     }
 
     function setCakeMasterChefContract(address _cakeMasterChef) external onlyGovernance {
         cakeMasterChef = _cakeMasterChef;
-    }
-
-    function setBuyBurnPercent(uint256 _buyBurnPercent) external onlyGovernance {
-        buyBurnPercent = _buyBurnPercent;
     }
 }
