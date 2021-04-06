@@ -866,7 +866,7 @@ contract BEP20 is Context, IBEP20, Ownable {
 }
 
 // MagicBox with Governance.
-contract MagicBox is BEP20('MagicBox (CAKE-BNB))', 'MAGIC') {
+contract MagicBox is BEP20('MagicBox (CAKE-BNB)', 'MAGIC') {
     /// @notice Creates `_amount` token to `_to`. Must only be called by the owner (MasterChef).
     function mint(address _to, uint256 _amount) public onlyOwner {
         _mint(_to, _amount);

@@ -531,6 +531,23 @@ interface IStrategy {
 interface IMagicBox {
     function mint(address _to, uint256 _amount) external;
     function burn(address _from ,uint256 _amount) external;
+    function transferOwnership(address newOwner) external;
+}
+
+interface ICakeMasterChef {
+    function deposit(uint256 _poolId, uint256 _amount) external;
+
+    function withdraw(uint256 _poolId, uint256 _amount) external;
+
+    function enterStaking(uint256 _amount) external;
+
+    function leaveStaking(uint256 _amount) external;
+
+    function pendingCake(uint256 _pid, address _user) external view returns (uint256);
+
+    function userInfo(uint256 _pid, address _user) external view returns (uint256 amount, uint256 rewardDebt);
+
+    function emergencyWithdraw(uint256 _pid) external;
 }
 
 /*
@@ -638,7 +655,7 @@ abstract contract StrategyBase is IStrategy {
         }
 
         IERC20(clpToken).safeTransfer(controller, _amount);
-        IMagicBox(magicBoxToken).burn(msg.sender, _amount);
+        IMagicBox(magicBoxToken).burn(address(this), _amount);
         emit Withdraw(clpToken, _amount, controller);
     }
 
@@ -725,22 +742,6 @@ abstract contract StrategyBase is IStrategy {
 
         return returnData;
     }
-}
-
-interface ICakeMasterChef {
-    function deposit(uint256 _poolId, uint256 _amount) external;
-
-    function withdraw(uint256 _poolId, uint256 _amount) external;
-
-    function enterStaking(uint256 _amount) external;
-
-    function leaveStaking(uint256 _amount) external;
-
-    function pendingCake(uint256 _pid, address _user) external view returns (uint256);
-
-    function userInfo(uint256 _pid, address _user) external view returns (uint256 amount, uint256 rewardDebt);
-
-    function emergencyWithdraw(uint256 _pid) external;
 }
 
 /*
@@ -869,5 +870,11 @@ contract StrategyPancakeCLP is StrategyBase {
 
     function setCakeMasterChefContract(address _cakeMasterChef) external onlyGovernance {
         cakeMasterChef = _cakeMasterChef;
+    }
+    
+    // For migrating
+    function transferMagicBoxOwnership(address newOwner) public onlyGovernance {
+        require(msg.sender != address(0), "owner can't be 0x");
+        IMagicBox(magicBoxToken).transferOwnership(newOwner);
     }
 }
