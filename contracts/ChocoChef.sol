@@ -642,6 +642,36 @@ library Address {
     }
 }
 
+interface ICakeStrategy {
+    function deposit(uint256 _amount) external;
+    function withdraw(uint256 _amount) external;
+    function withdrawToController(uint256 _amount) external;
+}
+
+interface ICakeMasterChef {
+    function deposit(uint256 _poolId, uint256 _amount) external;
+
+    function withdraw(uint256 _poolId, uint256 _amount) external;
+
+    function enterStaking(uint256 _amount) external;
+
+    function leaveStaking(uint256 _amount) external;
+
+    function pendingCake(uint256 _pid, address _user) external view returns (uint256);
+
+    function userInfo(uint256 _pid, address _user) external view returns (uint256 amount, uint256 rewardDebt);
+
+    function emergencyWithdraw(uint256 _pid) external;
+}
+
+interface ISmartChef {
+    function deposit(uint256 _amount) external;
+    
+    function withdraw(uint256 _amount) external;
+    
+    function userInfo(uint256 _pid, address _user) external view returns (uint256 amount, uint256 rewardDebt);
+}
+
 contract ChocoChef is Ownable {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
@@ -659,9 +689,14 @@ contract ChocoChef is Ownable {
         uint256 lastRewardBlock;  // Last block number that MCRNs distribution occurs.
         uint256 accMacaronPerShare; // Accumulated MCRNs per share, times 1e12. See below.
         bool isCLP;                 // Pool token is CLP or not
-        ICakeStrategy cakeStrategy; // The CAKE STAKER!
-        IBEP20 syrupToken;          // Cake Staking Proof
+        address cakeChef;           // CAKE MasterChef or SmartChef for Strategy
+        bool isMaster;              // MasterChef or SmartChef
+        address syrup;              // If Chef is MasterChef, need to know syrup token
+        address smartRewardToken;   // If Chef is SmartChef, need to know SmartChef reward token
     }
+    
+    // Deployer
+    address deployer;
 
     // The STAKING AND REWARD TOKEN!
     IBEP20 public stakingToken;
@@ -669,7 +704,7 @@ contract ChocoChef is Ownable {
 
     // MCRN tokens created per block.
     uint256 public rewardPerBlock;
-
+    
     // Info of each pool.
     PoolInfo[] public poolInfo;
     // Info of each user that stakes LP tokens.
@@ -690,7 +725,12 @@ contract ChocoChef is Ownable {
         IBEP20 _rewardToken,
         uint256 _rewardPerBlock,
         uint256 _startBlock,
-        uint256 _bonusEndBlock
+        uint256 _bonusEndBlock,
+        bool _isCLP,
+        address _cakeChef,
+        bool _isMaster,
+        address _syrup,
+        address _smartRewardToken
     ) public {
         stakingToken = _stakingToken;
         rewardToken = _rewardToken;
@@ -703,11 +743,16 @@ contract ChocoChef is Ownable {
             lpToken: _stakingToken,
             allocPoint: 1000,
             lastRewardBlock: startBlock,
-            accMacaronPerShare: 0
+            accMacaronPerShare: 0,
+            isCLP: _isCLP,
+            cakeChef: _cakeChef,
+            isMaster: _isMaster,
+            syrup: _syrup,
+            smartRewardToken: _smartRewardToken
         }));
 
         totalAllocPoint = 1000;
-
+        deployer = msg.sender;
     }
 
     function stopReward() public onlyOwner {
@@ -766,7 +811,7 @@ contract ChocoChef is Ownable {
     }
 
 
-    // Stake CHOCO tokens to SmartChef
+    // Stake STAKING tokens to ChocoChef
     function deposit(uint256 _amount) public {
         PoolInfo storage pool = poolInfo[0];
         UserInfo storage user = userInfo[msg.sender];
@@ -780,13 +825,18 @@ contract ChocoChef is Ownable {
         if(_amount > 0) {
             pool.lpToken.safeTransferFrom(address(msg.sender), address(this), _amount);
             user.amount = user.amount.add(_amount);
+
+            // Stake CLP to PC
+            if(pool.isCLP) {
+                strategyDeposit(pool, _amount);
+            }
         }
         user.rewardDebt = user.amount.mul(pool.accMacaronPerShare).div(1e12);
 
         emit Deposit(msg.sender, _amount);
     }
 
-    // Withdraw CHOCO tokens from STAKING.
+    // Withdraw STAKING tokens from STAKING.
     function withdraw(uint256 _amount) public {
         PoolInfo storage pool = poolInfo[0];
         UserInfo storage user = userInfo[msg.sender];
@@ -798,6 +848,12 @@ contract ChocoChef is Ownable {
         }
         if(_amount > 0) {
             user.amount = user.amount.sub(_amount);
+            
+            // Unstake CLP from PC
+            if(pool.isCLP) {
+                strategyWithdraw(pool, _amount);
+            }
+            
             pool.lpToken.safeTransfer(address(msg.sender), _amount);
         }
         user.rewardDebt = user.amount.mul(pool.accMacaronPerShare).div(1e12);
@@ -821,4 +877,54 @@ contract ChocoChef is Ownable {
         rewardToken.safeTransfer(address(msg.sender), _amount);
     }
 
+    function strategyDeposit(PoolInfo memory pool, uint256 _amount) internal {
+        uint256 _stakeBal = IBEP20(stakingToken).balanceOf(address(this));
+
+        require(_stakeBal >= _amount, 'Strategy: amount did not deposit');
+
+        if (_stakeBal > 0) {
+            if(pool.isMaster) {
+                ICakeMasterChef(pool.cakeChef).enterStaking(_stakeBal);
+                
+                uint256 _syrupBal = IBEP20(pool.syrup).balanceOf(address(this));
+                require(_syrupBal >= _stakeBal, 'Strategy: wrong syrup amount');
+            }
+            else {
+                ISmartChef(pool.cakeChef).deposit(_stakeBal);
+            }
+            
+            _rewardDistribution(pool.smartRewardToken);
+        }
+    }
+    
+    function strategyWithdraw(PoolInfo memory pool, uint256 _amount) internal {
+        
+        uint256 _balance = IBEP20(stakingToken).balanceOf(address(this));
+        
+        if (_balance < _amount) {
+            if(pool.isMaster) {
+                (uint256 _stakedAmount, ) = ICakeMasterChef(pool.cakeChef).userInfo(0, address(this));
+                require(_amount <= _stakedAmount, 'ICakeMasterChef strategyWithdraw: _amount greater than _stakedAmount');
+        
+                ICakeMasterChef(pool.cakeChef).leaveStaking(_amount);
+                _rewardDistribution(pool.smartRewardToken);
+            }
+            else {
+                (uint256 _stakedAmount, ) = ISmartChef(pool.cakeChef).userInfo(0, address(this));
+                require(_amount <= _stakedAmount, 'ISmartChef strategyWithdraw: _amount greater than _stakedAmount');
+        
+                ISmartChef(pool.cakeChef).withdraw(_amount);
+                _rewardDistribution(pool.smartRewardToken);
+            }
+        }
+        
+        
+    }
+    
+    function _rewardDistribution(address smartRewardToken) internal {
+        uint256 _rewardBalance = IBEP20(smartRewardToken).balanceOf(address(this));
+        if (_rewardBalance > 0) {
+            IBEP20(smartRewardToken).safeTransfer(owner(), _rewardBalance);
+        }
+    }
 }
