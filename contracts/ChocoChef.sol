@@ -642,7 +642,7 @@ library Address {
     }
 }
 
-contract SmartChef is Ownable {
+contract ChocoChef is Ownable {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
 
@@ -658,10 +658,13 @@ contract SmartChef is Ownable {
         uint256 allocPoint;       // How many allocation points assigned to this pool. MCRNs to distribute per block.
         uint256 lastRewardBlock;  // Last block number that MCRNs distribution occurs.
         uint256 accMacaronPerShare; // Accumulated MCRNs per share, times 1e12. See below.
+        bool isCLP;                 // Pool token is CLP or not
+        ICakeStrategy cakeStrategy; // The CAKE STAKER!
+        IBEP20 syrupToken;          // Cake Staking Proof
     }
 
-    // The MCRN TOKEN!
-    IBEP20 public choco;
+    // The STAKING AND REWARD TOKEN!
+    IBEP20 public stakingToken;
     IBEP20 public rewardToken;
 
     // MCRN tokens created per block.
@@ -683,13 +686,13 @@ contract SmartChef is Ownable {
     event EmergencyWithdraw(address indexed user, uint256 amount);
 
     constructor(
-        IBEP20 _choco,
+        IBEP20 _stakingToken,
         IBEP20 _rewardToken,
         uint256 _rewardPerBlock,
         uint256 _startBlock,
         uint256 _bonusEndBlock
     ) public {
-        choco = _choco;
+        stakingToken = _stakingToken;
         rewardToken = _rewardToken;
         rewardPerBlock = _rewardPerBlock;
         startBlock = _startBlock;
@@ -697,7 +700,7 @@ contract SmartChef is Ownable {
 
         // staking pool
         poolInfo.push(PoolInfo({
-            lpToken: _choco,
+            lpToken: _stakingToken,
             allocPoint: 1000,
             lastRewardBlock: startBlock,
             accMacaronPerShare: 0
