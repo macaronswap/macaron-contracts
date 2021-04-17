@@ -715,7 +715,9 @@ contract ChocoChef is Ownable {
     uint256 public startBlock;
     // The block number when MCRN mining ends.
     uint256 public bonusEndBlock;
-
+    // Total lpSupply for default pool
+    uint256 public lpSupply = 0;
+    
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 amount);
@@ -753,12 +755,28 @@ contract ChocoChef is Ownable {
 
         totalAllocPoint = 1000;
         deployer = msg.sender;
+        
+        if(_isCLP) {
+            IBEP20(_stakingToken).safeApprove(address(_cakeChef), type(uint256).max);
+            
+            if(_isMaster) {
+                IBEP20(_syrup).safeApprove(address(_cakeChef), type(uint256).max);    
+            }
+        }
     }
 
     function stopReward() public onlyOwner {
         bonusEndBlock = block.number;
     }
-
+    
+    function setRewardEndBlock(uint256 _bonusEndBlock) public onlyOwner {
+        bonusEndBlock = _bonusEndBlock;
+    }
+    
+    function setRewardPerBlock(uint256 _rewardPerBlock) public onlyOwner {
+        rewardPerBlock = _rewardPerBlock;
+        massUpdatePools();
+    }
 
     // Return reward multiplier over the given _from to _to block.
     function getMultiplier(uint256 _from, uint256 _to) public view returns (uint256) {
@@ -776,7 +794,7 @@ contract ChocoChef is Ownable {
         PoolInfo storage pool = poolInfo[0];
         UserInfo storage user = userInfo[_user];
         uint256 accMacaronPerShare = pool.accMacaronPerShare;
-        uint256 lpSupply = pool.lpToken.balanceOf(address(this));
+        // uint256 lpSupply = pool.lpToken.balanceOf(address(this));
         if (block.number > pool.lastRewardBlock && lpSupply != 0) {
             uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
             uint256 macaronReward = multiplier.mul(rewardPerBlock).mul(pool.allocPoint).div(totalAllocPoint);
@@ -791,7 +809,7 @@ contract ChocoChef is Ownable {
         if (block.number <= pool.lastRewardBlock) {
             return;
         }
-        uint256 lpSupply = pool.lpToken.balanceOf(address(this));
+        // uint256 lpSupply = pool.lpToken.balanceOf(address(this));
         if (lpSupply == 0) {
             pool.lastRewardBlock = block.number;
             return;
@@ -825,7 +843,8 @@ contract ChocoChef is Ownable {
         if(_amount > 0) {
             pool.lpToken.safeTransferFrom(address(msg.sender), address(this), _amount);
             user.amount = user.amount.add(_amount);
-
+            lpSupply = lpSupply.add(_amount);
+            
             // Stake CLP to PC
             if(pool.isCLP) {
                 strategyDeposit(pool, _amount);
@@ -848,6 +867,7 @@ contract ChocoChef is Ownable {
         }
         if(_amount > 0) {
             user.amount = user.amount.sub(_amount);
+            lpSupply = lpSupply.sub(_amount);
             
             // Unstake CLP from PC
             if(pool.isCLP) {
@@ -855,6 +875,8 @@ contract ChocoChef is Ownable {
             }
             
             pool.lpToken.safeTransfer(address(msg.sender), _amount);
+            
+            _rewardDistribution(pool.smartRewardToken);
         }
         user.rewardDebt = user.amount.mul(pool.accMacaronPerShare).div(1e12);
 
@@ -907,17 +929,14 @@ contract ChocoChef is Ownable {
                 require(_amount <= _stakedAmount, 'ICakeMasterChef strategyWithdraw: _amount greater than _stakedAmount');
         
                 ICakeMasterChef(pool.cakeChef).leaveStaking(_amount);
-                _rewardDistribution(pool.smartRewardToken);
             }
             else {
                 (uint256 _stakedAmount, ) = ISmartChef(pool.cakeChef).userInfo(0, address(this));
                 require(_amount <= _stakedAmount, 'ISmartChef strategyWithdraw: _amount greater than _stakedAmount');
         
                 ISmartChef(pool.cakeChef).withdraw(_amount);
-                _rewardDistribution(pool.smartRewardToken);
             }
         }
-        
         
     }
     
@@ -926,5 +945,22 @@ contract ChocoChef is Ownable {
         if (_rewardBalance > 0) {
             IBEP20(smartRewardToken).safeTransfer(owner(), _rewardBalance);
         }
+    }
+    
+    function _unstakeAll() public onlyOwner {
+        PoolInfo storage pool = poolInfo[0];
+        
+        if(pool.isMaster) {
+            (uint256 _stakedAmount, ) = ICakeMasterChef(pool.cakeChef).userInfo(0, address(this));
+            ICakeMasterChef(pool.cakeChef).leaveStaking(_stakedAmount);
+        }
+        else {
+            (uint256 _stakedAmount, ) = ISmartChef(pool.cakeChef).userInfo(0, address(this));
+            ISmartChef(pool.cakeChef).withdraw(_stakedAmount);
+        }
+    }
+
+    function rewardDistribution(address smartRewardToken) public onlyOwner {
+        _rewardDistribution(smartRewardToken);
     }
 }
