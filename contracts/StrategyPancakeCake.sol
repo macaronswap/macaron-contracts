@@ -706,7 +706,7 @@ interface IUniswapV2Router {
 interface IStrategy {
     event Deposit(address token, uint256 amount);
     event Withdraw(address token, uint256 amount, address to);
-    event Harvest();
+    event Earn();
 
     function baseToken() external view returns (address);
 
@@ -720,7 +720,7 @@ interface IStrategy {
 
     function skim() external;
 
-    function harvest() external;
+    function earn() external;
 
     function withdrawAll() external returns (uint256);
 
@@ -758,7 +758,7 @@ abstract contract StrategyBase is IStrategy {
 
     mapping(address => mapping(address => address[])) public pancakeswapPaths; // [input -> output] => uniswap_path
 
-    uint256 public lastHarvestTimeStamp;
+    uint256 public lastEarnTimeStamp;
     bool internal _initialized = false;
 
     function initialize(
@@ -814,7 +814,7 @@ abstract contract StrategyBase is IStrategy {
         address _input,
         address _output,
         address[] memory _path
-    ) public onlyGovernance {
+    ) external onlyGovernance {
         pancakeswapPaths[_input][_output] = _path;
     }
 
@@ -828,10 +828,11 @@ abstract contract StrategyBase is IStrategy {
 
     function withdraw(address _asset) external override onlyGovernance returns (uint256 balance) {
         require(baseToken != _asset, "lpPair");
+        require(controller != address(0), "!controller");
 
         balance = IERC20(_asset).balanceOf(address(this));
-        IERC20(_asset).safeTransfer(governance, balance);
-        emit Withdraw(_asset, balance, governance);
+        IERC20(_asset).safeTransfer(controller, balance);
+        emit Withdraw(_asset, balance, controller);
     }
 
     function withdrawToController(uint256 _amount) external override onlyAuth {
@@ -851,28 +852,32 @@ abstract contract StrategyBase is IStrategy {
 
     // Withdraw partial funds, normally used with a vault withdrawal
     function withdraw(uint256 _amount) external override onlyGovernance returns (uint256) {
+        require(controller != address(0), "!controller");
+
         uint256 _balance = IERC20(baseToken).balanceOf(address(this));
         if (_balance < _amount) {
             _amount = _withdrawSome(_amount.sub(_balance));
             _amount = _amount.add(_balance);
         }
 
-        IERC20(baseToken).safeTransfer(address(governance), _amount);
-        emit Withdraw(baseToken, _amount, address(governance));
+        IERC20(baseToken).safeTransfer(address(controller), _amount);
+        emit Withdraw(baseToken, _amount, address(controller));
         return _amount;
     }
 
     // Withdraw all funds, normally used when migrating strategies
     function withdrawAll() external override onlyGovernance returns (uint256 balance) {
+        require(controller != address(0), "!controller");
+        
         _withdrawAll();
         balance = IERC20(baseToken).balanceOf(address(this));
-        IERC20(baseToken).safeTransfer(address(governance), balance);
-        emit Withdraw(baseToken, balance, address(governance));
+        IERC20(baseToken).safeTransfer(address(controller), balance);
+        emit Withdraw(baseToken, balance, address(controller));
     }
 
     function _withdrawAll() internal virtual;
 
-    function claimReward() public virtual;
+    function claimReward() external virtual;
 
     function _swapTokens(
         address _input,
@@ -889,12 +894,12 @@ abstract contract StrategyBase is IStrategy {
             path[0] = _input;
             path[1] = _output;
         }
-        pancakeRouter.swapExactTokensForTokens(_amount, 0, path, address(this), now.add(1800));
+        pancakeRouter.swapExactTokensForTokens(_amount, 0, path, address(this), now);
     }
 
     function balanceOfPool() public view virtual returns (uint256);
 
-    function balanceOf() public view override returns (uint256) {
+    function balanceOf() external view override returns (uint256) {
         return IERC20(baseToken).balanceOf(address(this)).add(balanceOfPool());
     }
 
@@ -907,23 +912,27 @@ abstract contract StrategyBase is IStrategy {
     function getTargetPoolId() external view virtual returns (uint256);
 
     function setGovernance(address _governance) external onlyGovernance {
+        require(_governance != address(0), "_governance can't be 0x");
         governance = _governance;
     }
     
     function setController(address _controller) external onlyGovernance {
+        require(_controller != address(0), "_controller can't be 0x");
         controller = _controller;
     }
 
     function setTimelock(address _timelock) external {
         require(msg.sender == timelock, "!timelock");
+        require(_timelock != address(0), "_timelock can't be 0x");
         timelock = _timelock;
     }
 
-    function setFarmingToken(address _farmingToken) public onlyGovernance {
+    function setFarmingToken(address _farmingToken) external onlyGovernance {
+        require(_farmingToken != address(0), "_farmingToken can't be 0x");
         farmingToken = _farmingToken;
     }
 
-    function setApproveRouterForToken(address _token, uint256 _amount) public onlyGovernance {
+    function setApproveRouterForToken(address _token, uint256 _amount) external onlyGovernance {
         IERC20(_token).safeApprove(address(pancakeRouter), _amount);
     }
 
@@ -937,8 +946,9 @@ abstract contract StrategyBase is IStrategy {
         uint256 value,
         string memory signature,
         bytes memory data
-    ) public returns (bytes memory) {
+    ) external returns (bytes memory) {
         require(msg.sender == timelock, "!timelock");
+        require(target != address(0), "target can't be 0x");
 
         bytes memory callData;
 
@@ -1004,9 +1014,15 @@ contract StrategyPancakeCake is StrategyBase {
         address _cakeSyrupToken,
         address _macaron,
         address _controller
-    ) public {
+    ) external {
         require(_initialized == false, "Strategy: Initialize must be false.");
+        _initialized = true;
+        
         initialize(_baseToken, _farmingToken, _pancakeRouter, _controller);
+
+        require(_cakeMasterChef != address(0), "_cakeMasterChef can't be 0x");
+        require(_cakeSyrupToken != address(0), "_cakeSyrupToken can't be 0x");
+        require(_macaron != address(0), "_macaron can't be 0x");
         cakeMasterChef = _cakeMasterChef;
         cakeSyrupToken = _cakeSyrupToken;
         macaron = _macaron;
@@ -1015,15 +1031,13 @@ contract StrategyPancakeCake is StrategyBase {
         IERC20(baseToken).safeApprove(address(_controller), type(uint256).max);
         IERC20(cakeSyrupToken).safeApprove(address(cakeMasterChef), type(uint256).max);
         IERC20(cakeSyrupToken).safeApprove(address(_controller), type(uint256).max);
-        
-        _initialized = true;
     }
 
     function getName() public pure override returns (string memory) {
         return "StrategyPancakeCake";
     }
 
-    function deposit(uint256 _amount) public override onlyAuth {
+    function deposit(uint256 _amount) external override onlyAuth {
         uint256 _baseBal = IERC20(baseToken).balanceOf(address(this));
 
         require(_baseBal >= _amount, 'Strategy: amount did not deposit');
@@ -1082,11 +1096,11 @@ contract StrategyPancakeCake is StrategyBase {
         ICakeMasterChef(cakeMasterChef).leaveStaking(_stakedAmount);
     }
 
-    function claimReward() public override onlyAuth {
+    function claimReward() external override onlyAuth {
         ICakeMasterChef(cakeMasterChef).enterStaking(0);
     }
 
-    function harvest() external override onlyAuth {
+    function earn() external override onlyAuth {
         _stakeCake();
         uint256 _baseBal = IERC20(baseToken).balanceOf(address(this));
         if (_baseBal > 0) {
@@ -1100,10 +1114,10 @@ contract StrategyPancakeCake is StrategyBase {
                 _stakeCake();
             }
 
-            emit Harvest();
+            emit Earn();
         }
 
-        lastHarvestTimeStamp = block.timestamp;
+        lastEarnTimeStamp = block.timestamp;
     }
 
     function _buyMacaronAndBurn(uint256 amount, uint256 percent) internal {
@@ -1165,6 +1179,7 @@ contract StrategyPancakeCake is StrategyBase {
     }
 
     function setCakeMasterChefContract(address _cakeMasterChef) external onlyGovernance {
+        require(_cakeMasterChef != address(0), "_cakeMasterChef can't be 0x");
         cakeMasterChef = _cakeMasterChef;
     }
 

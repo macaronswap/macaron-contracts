@@ -86,7 +86,7 @@ contract Ownable is Context {
      * NOTE: Renouncing ownership will leave the contract without an owner,
      * thereby removing any functionality that is only available to the owner.
      */
-    function renounceOwnership() public onlyOwner {
+    function renounceOwnership() external onlyOwner {
         emit OwnershipTransferred(_owner, address(0));
         _owner = address(0);
     }
@@ -95,7 +95,7 @@ contract Ownable is Context {
      * @dev Transfers ownership of the contract to a new account (`newOwner`).
      * Can only be called by the current owner.
      */
-    function transferOwnership(address newOwner) public onlyOwner {
+    function transferOwnership(address newOwner) external onlyOwner {
         _transferOwnership(newOwner);
     }
 
@@ -757,23 +757,25 @@ contract ChocoChef is Ownable {
         deployer = msg.sender;
         
         if(_isCLP) {
+            require(_cakeChef != address(0), "_cakeChef can't be 0x");
             IBEP20(_stakingToken).safeApprove(address(_cakeChef), type(uint256).max);
             
             if(_isMaster) {
+                require(_syrup != address(0), "_syrup can't be 0x");
                 IBEP20(_syrup).safeApprove(address(_cakeChef), type(uint256).max);    
             }
         }
     }
 
-    function stopReward() public onlyOwner {
+    function stopReward() external onlyOwner {
         bonusEndBlock = block.number;
     }
     
-    function setRewardEndBlock(uint256 _bonusEndBlock) public onlyOwner {
+    function setRewardEndBlock(uint256 _bonusEndBlock) external onlyOwner {
         bonusEndBlock = _bonusEndBlock;
     }
     
-    function setRewardPerBlock(uint256 _rewardPerBlock) public onlyOwner {
+    function setRewardPerBlock(uint256 _rewardPerBlock) external onlyOwner {
         rewardPerBlock = _rewardPerBlock;
         massUpdatePools();
     }
@@ -830,7 +832,7 @@ contract ChocoChef is Ownable {
 
 
     // Stake STAKING tokens to ChocoChef
-    function deposit(uint256 _amount) public {
+    function deposit(uint256 _amount) external {
         PoolInfo storage pool = poolInfo[0];
         UserInfo storage user = userInfo[msg.sender];
         updatePool(0);
@@ -856,7 +858,7 @@ contract ChocoChef is Ownable {
     }
 
     // Withdraw STAKING tokens from STAKING.
-    function withdraw(uint256 _amount) public {
+    function withdraw(uint256 _amount) external {
         PoolInfo storage pool = poolInfo[0];
         UserInfo storage user = userInfo[msg.sender];
         require(user.amount >= _amount, "withdraw: not good");
@@ -884,7 +886,7 @@ contract ChocoChef is Ownable {
     }
 
     // Withdraw without caring about rewards. EMERGENCY ONLY.
-    function emergencyWithdraw() public {
+    function emergencyWithdraw() external {
         PoolInfo storage pool = poolInfo[0];
         UserInfo storage user = userInfo[msg.sender];
         pool.lpToken.safeTransfer(address(msg.sender), user.amount);
@@ -894,7 +896,7 @@ contract ChocoChef is Ownable {
     }
 
     // Withdraw reward. EMERGENCY ONLY.
-    function emergencyRewardWithdraw(uint256 _amount) public onlyOwner {
+    function emergencyRewardWithdraw(uint256 _amount) external onlyOwner {
         require(_amount < rewardToken.balanceOf(address(this)), 'not enough token');
         rewardToken.safeTransfer(address(msg.sender), _amount);
     }
@@ -947,7 +949,7 @@ contract ChocoChef is Ownable {
         }
     }
     
-    function _unstakeAll() public onlyOwner {
+    function _unstakeAll() external onlyOwner {
         PoolInfo storage pool = poolInfo[0];
         
         if(pool.isMaster) {
@@ -960,7 +962,7 @@ contract ChocoChef is Ownable {
         }
     }
 
-    function rewardDistribution(address smartRewardToken) public onlyOwner {
+    function rewardDistribution(address smartRewardToken) external onlyOwner {
         _rewardDistribution(smartRewardToken);
     }
 }

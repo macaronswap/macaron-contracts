@@ -622,15 +622,18 @@ abstract contract StrategyBase is IStrategy {
 
     function deposit(uint256 _amount) external virtual override onlyAuth {}
 
+    // This method use only migration
     function skim() external override onlyGovernance {
         IERC20(clpToken).safeTransfer(governance, IERC20(clpToken).balanceOf(address(this)));
         IERC20(rewardToken).safeTransfer(governance, IERC20(rewardToken).balanceOf(address(this)));
     }
     
+    // This method use only migration
     function skimCLP() external override onlyGovernance {
         IERC20(clpToken).safeTransfer(governance, IERC20(clpToken).balanceOf(address(this)));
     }
     
+    // This method use only migration
     function skimRewards() external override onlyGovernance {
         IERC20(rewardToken).safeTransfer(governance, IERC20(rewardToken).balanceOf(address(this)));
     }
@@ -638,10 +641,11 @@ abstract contract StrategyBase is IStrategy {
     // Withdraw rewards and other tokens to govarnance
     function withdraw(address _asset) external override onlyGovernance returns (uint256 balance) {
         require(clpToken != _asset, "lpPair");
+        require(controller != address(0), "!controller");
 
         balance = IERC20(_asset).balanceOf(address(this));
-        IERC20(_asset).safeTransfer(governance, balance);
-        emit Withdraw(_asset, balance, governance);
+        IERC20(_asset).safeTransfer(controller, balance);
+        emit Withdraw(_asset, balance, controller);
     }
 
     // Withdraw CLP amount to controller
@@ -663,32 +667,36 @@ abstract contract StrategyBase is IStrategy {
 
     // Withdraw partial funds, normally used with a vault withdrawal
     function withdraw(uint256 _amount) external override onlyGovernance returns (uint256) {
+        require(controller != address(0), "!controller");
+
         uint256 _balance = IERC20(clpToken).balanceOf(address(this));
         if (_balance < _amount) {
             _amount = _unstakeSome(_amount.sub(_balance));
             _amount = _amount.add(_balance);
         }
 
-        IERC20(clpToken).safeTransfer(address(governance), _amount);
-        emit Withdraw(clpToken, _amount, address(governance));
+        IERC20(clpToken).safeTransfer(address(controller), _amount);
+        emit Withdraw(clpToken, _amount, address(controller));
         return _amount;
     }
 
     // Withdraw all funds, normally used when migrating strategies
     function withdrawAll() external override onlyGovernance returns (uint256 balance) {
+        require(controller != address(0), "!controller");
+
         _unstakeAll();
         balance = IERC20(clpToken).balanceOf(address(this));
-        IERC20(clpToken).safeTransfer(address(governance), balance);
-        emit Withdraw(clpToken, balance, address(governance));
+        IERC20(clpToken).safeTransfer(address(controller), balance);
+        emit Withdraw(clpToken, balance, address(controller));
     }
 
     function _unstakeAll() internal virtual;
 
-    function claimReward() public virtual;
+    function claimReward() external virtual;
 
     function balanceOfPool() public view virtual returns (uint256);
 
-    function balanceOf() public view override returns (uint256) {
+    function balanceOf() external view override returns (uint256) {
         return IERC20(clpToken).balanceOf(address(this)).add(balanceOfPool());
     }
 
@@ -697,19 +705,23 @@ abstract contract StrategyBase is IStrategy {
     function getTargetPoolId() external view virtual returns (uint256);
 
     function setGovernance(address _governance) external onlyGovernance {
+        require(_governance != address(0), "_governance can't be 0x");
         governance = _governance;
     }
     
     function setController(address _controller) external onlyGovernance {
+        require(_controller != address(0), "_controller can't be 0x");
         controller = _controller;
     }
 
     function setTimelock(address _timelock) external {
         require(msg.sender == timelock, "!timelock");
+        require(_timelock != address(0), "_timelock can't be 0x");
         timelock = _timelock;
     }
 
-    function setrewardToken(address _rewardToken) public onlyGovernance {
+    function setrewardToken(address _rewardToken) external onlyGovernance {
+        require(_rewardToken != address(0), "_rewardToken can't be 0x");
         rewardToken = _rewardToken;
     }
 
@@ -723,8 +735,9 @@ abstract contract StrategyBase is IStrategy {
         uint256 value,
         string memory signature,
         bytes memory data
-    ) public returns (bytes memory) {
+    ) external returns (bytes memory) {
         require(msg.sender == timelock, "!timelock");
+        require(target != address(0), "target can't be 0x");
 
         bytes memory callData;
 
@@ -770,9 +783,11 @@ contract StrategyPancakeCLP is StrategyBase {
         address _cakeMasterChef,
         address _controller,
         address _magicBoxToken
-    ) public {
+    ) external {
         require(_initialized == false, "Strategy: Initialize must be false.");
         initialize(_clpToken, _clpPid, _rewardToken, _controller, _magicBoxToken);
+
+        require(_cakeMasterChef != address(0), "_cakeMasterChef can't be 0x");
         cakeMasterChef = _cakeMasterChef;
 
         IERC20(clpToken).safeApprove(address(cakeMasterChef), type(uint256).max);
@@ -786,7 +801,7 @@ contract StrategyPancakeCLP is StrategyBase {
         return "MacaronStrategyPancakeCLP";
     }
 
-    function deposit(uint256 _amount) public override onlyAuth {
+    function deposit(uint256 _amount) external override onlyAuth {
         uint256 _baseBal = IERC20(clpToken).balanceOf(address(this));
 
         require(_baseBal >= _amount, 'Strategy: amount did not deposit');
@@ -836,7 +851,7 @@ contract StrategyPancakeCLP is StrategyBase {
         }
     }
 
-    function claimReward() public override onlyAuth {
+    function claimReward() external override onlyAuth {
         ICakeMasterChef(cakeMasterChef).deposit(clpPid, 0);
     }
 
@@ -845,7 +860,7 @@ contract StrategyPancakeCLP is StrategyBase {
         return amount;
     }
 
-    function balanceOfPoolPending() public view returns (uint256) {
+    function balanceOfPoolPending() external view returns (uint256) {
         return ICakeMasterChef(cakeMasterChef).pendingCake(clpPid, address(this));
     }
 
@@ -869,12 +884,13 @@ contract StrategyPancakeCLP is StrategyBase {
     }
 
     function setCakeMasterChefContract(address _cakeMasterChef) external onlyGovernance {
+        require(_cakeMasterChef != address(0), "_cakeMasterChef can't be 0x");
         cakeMasterChef = _cakeMasterChef;
     }
     
     // For migrating
-    function transferMagicBoxOwnership(address newOwner) public onlyGovernance {
-        require(msg.sender != address(0), "owner can't be 0x");
+    function transferMagicBoxOwnership(address newOwner) external onlyGovernance {
+        require(newOwner != address(0), "owner can't be 0x");
         IMagicBox(magicBoxToken).transferOwnership(newOwner);
     }
 }

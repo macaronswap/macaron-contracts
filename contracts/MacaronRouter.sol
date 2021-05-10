@@ -368,6 +368,9 @@ contract MacaronRouter is IMacaronRouter02 {
     }
 
     constructor(address _factory, address _WETH) public {
+        require(_factory != address(0), '_factory cant be address(0)');
+        require(_WETH != address(0), '_WETH cant be address(0)');
+
         factory = _factory;
         WETH = _WETH;
     }
@@ -747,12 +750,12 @@ contract MacaronRouter is IMacaronRouter02 {
     }
 
     // **** LIBRARY FUNCTIONS ****
-    function quote(uint amountA, uint reserveA, uint reserveB) public pure virtual override returns (uint amountB) {
+    function quote(uint amountA, uint reserveA, uint reserveB) external pure virtual override returns (uint amountB) {
         return MacaronLibrary.quote(amountA, reserveA, reserveB);
     }
 
     function getAmountOut(uint amountIn, uint reserveIn, uint reserveOut)
-        public
+        external
         pure
         virtual
         override
@@ -762,7 +765,7 @@ contract MacaronRouter is IMacaronRouter02 {
     }
 
     function getAmountIn(uint amountOut, uint reserveIn, uint reserveOut)
-        public
+        external
         pure
         virtual
         override
@@ -772,7 +775,7 @@ contract MacaronRouter is IMacaronRouter02 {
     }
 
     function getAmountsOut(uint amountIn, address[] memory path)
-        public
+        external
         view
         virtual
         override
@@ -782,7 +785,7 @@ contract MacaronRouter is IMacaronRouter02 {
     }
 
     function getAmountsIn(uint amountOut, address[] memory path)
-        public
+        external
         view
         virtual
         override

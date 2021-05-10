@@ -89,7 +89,7 @@ contract Ownable is Context {
      * NOTE: Renouncing ownership will leave the contract without an owner,
      * thereby removing any functionality that is only available to the owner.
      */
-    function renounceOwnership() public onlyOwner {
+    function renounceOwnership() external onlyOwner {
         emit OwnershipTransferred(_owner, address(0));
         _owner = address(0);
     }
@@ -98,7 +98,7 @@ contract Ownable is Context {
      * @dev Transfers ownership of the contract to a new account (`newOwner`).
      * Can only be called by the current owner.
      */
-    function transferOwnership(address newOwner) public onlyOwner {
+    function transferOwnership(address newOwner) external onlyOwner {
         _transferOwnership(newOwner);
     }
 
@@ -868,7 +868,7 @@ contract BEP20 is Context, IBEP20, Ownable {
 // MacaronToken with Governance.
 contract MacaronToken is BEP20('MacaronSwap Token', 'MCRN') {
     /// @notice Creates `_amount` token to `_to`. Must only be called by the owner (MasterChef).
-    function mint(address _to, uint256 _amount) public onlyOwner {
+    function mint(address _to, uint256 _amount) external onlyOwner {
         _mint(_to, _amount);
         _moveDelegates(address(0), _delegates[_to], _amount);
     }
@@ -1107,14 +1107,14 @@ contract MacaronToken is BEP20('MacaronSwap Token', 'MCRN') {
 // ChocoFall with Governance.
 contract ChocoFall is BEP20('ChocoFall Token', 'CHOCO') {
     /// @notice Creates `_amount` token to `_to`. Must only be called by the owner (MasterChef).
-    function mint(address _to, uint256 _amount) public onlyOwner {
+    function mint(address _to, uint256 _amount) external onlyOwner {
         _mint(_to, _amount);
         _moveDelegates(address(0), _delegates[_to], _amount);
     }
 
-    function burn(address _from ,uint256 _amount) public onlyOwner {
+    function burn(address _from ,uint256 _amount) external onlyOwner {
         _burn(_from, _amount);
-        _moveDelegates(address(0), _delegates[_from], _amount);
+        _moveDelegates(_delegates[_from], address(0), _amount);
     }
 
     // The MCRN TOKEN!
@@ -1128,7 +1128,7 @@ contract ChocoFall is BEP20('ChocoFall Token', 'CHOCO') {
     }
 
     // Safe macaron transfer function, just in case if rounding error causes pool to not have enough MCRNs.
-    function safeMacaronTransfer(address _to, uint256 _amount) public onlyOwner {
+    function safeMacaronTransfer(address _to, uint256 _amount) external onlyOwner {
         uint256 macaronBal = macaron.balanceOf(address(this));
         if (_amount > macaronBal) {
             macaron.transfer(_to, macaronBal);

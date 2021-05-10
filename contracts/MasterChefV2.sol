@@ -626,7 +626,7 @@ contract Ownable is Context {
      * NOTE: Renouncing ownership will leave the contract without an owner,
      * thereby removing any functionality that is only available to the owner.
      */
-    function renounceOwnership() public onlyOwner {
+    function renounceOwnership() external onlyOwner {
         emit OwnershipTransferred(_owner, address(0));
         _owner = address(0);
     }
@@ -635,7 +635,7 @@ contract Ownable is Context {
      * @dev Transfers ownership of the contract to a new account (`newOwner`).
      * Can only be called by the current owner.
      */
-    function transferOwnership(address newOwner) public onlyOwner {
+    function transferOwnership(address newOwner) external onlyOwner {
         _transferOwnership(newOwner);
     }
 
@@ -963,7 +963,7 @@ contract BEP20 is Context, IBEP20, Ownable {
 // MacaronToken with Governance.
 contract MacaronToken is BEP20('MacaronSwap Token', 'MCRN') {
     /// @notice Creates `_amount` token to `_to`. Must only be called by the owner (MasterChef).
-    function mint(address _to, uint256 _amount) public onlyOwner {
+    function mint(address _to, uint256 _amount) external onlyOwner {
         _mint(_to, _amount);
         _moveDelegates(address(0), _delegates[_to], _amount);
     }
@@ -1202,12 +1202,12 @@ contract MacaronToken is BEP20('MacaronSwap Token', 'MCRN') {
 // ChocoFall with Governance.
 contract ChocoFall is BEP20('ChocoFall Token', 'CHOCO') {
     /// @notice Creates `_amount` token to `_to`. Must only be called by the owner (MasterChef).
-    function mint(address _to, uint256 _amount) public onlyOwner {
+    function mint(address _to, uint256 _amount) external onlyOwner {
         _mint(_to, _amount);
         _moveDelegates(address(0), _delegates[_to], _amount);
     }
 
-    function burn(address _from ,uint256 _amount) public onlyOwner {
+    function burn(address _from ,uint256 _amount) external onlyOwner {
         _burn(_from, _amount);
         _moveDelegates(address(0), _delegates[_from], _amount);
     }
@@ -1223,7 +1223,7 @@ contract ChocoFall is BEP20('ChocoFall Token', 'CHOCO') {
     }
 
     // Safe macaron transfer function, just in case if rounding error causes pool to not have enough MCRNs.
-    function safeMacaronTransfer(address _to, uint256 _amount) public onlyOwner {
+    function safeMacaronTransfer(address _to, uint256 _amount) external onlyOwner {
         uint256 macaronBal = macaron.balanceOf(address(this));
         if (_amount > macaronBal) {
             macaron.transfer(_to, macaronBal);
@@ -1549,6 +1549,11 @@ contract MasterChef is Ownable {
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 indexed pid, uint256 amount);
 
+    modifier validatePoolByPid(uint256 _pid) {
+        require (_pid < poolInfo.length , "Pool does not exist");
+        _;
+    }
+
     constructor(
         MacaronToken _macaron,
         ChocoFall _choco,
@@ -1556,6 +1561,8 @@ contract MasterChef is Ownable {
         uint256 _macaronPerBlock,
         uint256 _startBlock
     ) public {
+        require(_devaddr != address(0), '_devaddr cant be address(0)');
+        
         macaron = _macaron;
         choco = _choco;
         devaddr = _devaddr;
@@ -1576,7 +1583,7 @@ contract MasterChef is Ownable {
         totalAllocPoint = 1000;
     }
 
-    function updateMultiplier(uint256 multiplierNumber) public onlyOwner {
+    function updateMultiplier(uint256 multiplierNumber) external onlyOwner {
         BONUS_MULTIPLIER = multiplierNumber;
     }
 
@@ -1586,7 +1593,7 @@ contract MasterChef is Ownable {
 
     // Add a new lp to the pool. Can only be called by the owner.
     // XXX DO NOT add the same LP token more than once. Rewards will be messed up if you do.
-    function add(uint256 _allocPoint, IBEP20 _lpToken, bool _withUpdate, bool _isCLP, ICakeStrategy _cakeStrategy, IBEP20 _syrupToken) public onlyOwner {
+    function add(uint256 _allocPoint, IBEP20 _lpToken, bool _withUpdate, bool _isCLP, ICakeStrategy _cakeStrategy, IBEP20 _syrupToken) external onlyOwner {
         if (_withUpdate) {
             massUpdatePools();
         }
@@ -1610,7 +1617,7 @@ contract MasterChef is Ownable {
     }
 
     // Update the given pool's MCRN allocation point. Can only be called by the owner.
-    function set(uint256 _pid, uint256 _allocPoint, bool _withUpdate) public onlyOwner {
+    function set(uint256 _pid, uint256 _allocPoint, bool _withUpdate) external onlyOwner validatePoolByPid(_pid) {
         if (_withUpdate) {
             massUpdatePools();
         }
@@ -1636,27 +1643,27 @@ contract MasterChef is Ownable {
     }
 
     // Set the cake strategy contract. Can only be called by the owner.
-    function setCakeStrategy(uint256 _pid, ICakeStrategy _cakeStrategy) public onlyOwner {
+    function setCakeStrategy(uint256 _pid, ICakeStrategy _cakeStrategy) external onlyOwner {
         poolInfo[_pid].cakeStrategy = _cakeStrategy;
     }
 
-    function setMacaronPerBlock(uint256 _macaronPerBlock) public onlyOwner {
+    function setMacaronPerBlock(uint256 _macaronPerBlock) external onlyOwner {
         macaronPerBlock = _macaronPerBlock;
         massUpdatePools();
     }
 
-    function setMacaronPoolRewardRatio(uint256 _macaronPoolRewardRatio) public onlyOwner {
+    function setMacaronPoolRewardRatio(uint256 _macaronPoolRewardRatio) external onlyOwner {
         macaronPoolRewardRatio = _macaronPoolRewardRatio;
         updateStakingPool();
     }
 
     // Set the migrator contract. Can only be called by the owner.
-    function setMigrator(IMigratorChef _migrator) public onlyOwner {
+    function setMigrator(IMigratorChef _migrator) external onlyOwner {
         migrator = _migrator;
     }
 
     // Migrate lp token to another lp contract. Can be called by anyone. We trust that migrator contract is good.
-    function migrate(uint256 _pid) public {
+    function migrate(uint256 _pid) external validatePoolByPid(_pid) {
         require(address(migrator) != address(0), "migrate: no migrator");
         PoolInfo storage pool = poolInfo[_pid];
         IBEP20 lpToken = pool.lpToken;
@@ -1680,7 +1687,7 @@ contract MasterChef is Ownable {
     }
 
     // View function to see pending MCRNs on frontend.
-    function pendingMacaron(uint256 _pid, address _user) external view returns (uint256) {
+    function pendingMacaron(uint256 _pid, address _user) external validatePoolByPid(_pid) view returns (uint256) {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][_user];
         uint256 accMacaronPerShare = pool.accMacaronPerShare;
@@ -1708,7 +1715,7 @@ contract MasterChef is Ownable {
 
 
     // Update reward variables of the given pool to be up-to-date.
-    function updatePool(uint256 _pid) public {
+    function updatePool(uint256 _pid) public validatePoolByPid(_pid) {
         PoolInfo storage pool = poolInfo[_pid];
         if (block.number <= pool.lastRewardBlock) {
             return;
@@ -1732,7 +1739,7 @@ contract MasterChef is Ownable {
     }
 
     // Deposit LP tokens to MasterChef for MCRN allocation.
-    function deposit(uint256 _pid, uint256 _amount) public {        
+    function deposit(uint256 _pid, uint256 _amount) external validatePoolByPid(_pid) {        
         require (_pid != 0, 'deposit MCRN by staking');
 
         PoolInfo storage pool = poolInfo[_pid];
@@ -1760,7 +1767,7 @@ contract MasterChef is Ownable {
     }
 
     // Withdraw LP tokens from MasterChef.
-    function withdraw(uint256 _pid, uint256 _amount) public {
+    function withdraw(uint256 _pid, uint256 _amount) external validatePoolByPid(_pid) {
         require (_pid != 0, 'withdraw MCRN by unstaking');
 
         PoolInfo storage pool = poolInfo[_pid];
@@ -1788,7 +1795,7 @@ contract MasterChef is Ownable {
     }
 
     // Stake MCRN tokens to MasterChef
-    function enterStaking(uint256 _amount) public {
+    function enterStaking(uint256 _amount) external {
         PoolInfo storage pool = poolInfo[0];
         UserInfo storage user = userInfo[0][msg.sender];
         updatePool(0);
@@ -1809,7 +1816,7 @@ contract MasterChef is Ownable {
     }
 
     // Withdraw MCRN tokens from STAKING.
-    function leaveStaking(uint256 _amount) public {
+    function leaveStaking(uint256 _amount) external {
         PoolInfo storage pool = poolInfo[0];
         UserInfo storage user = userInfo[0][msg.sender];
         require(user.amount >= _amount, "withdraw: not good");
@@ -1829,9 +1836,12 @@ contract MasterChef is Ownable {
     }
 
     // Withdraw without caring about rewards. EMERGENCY ONLY.
-    function emergencyWithdraw(uint256 _pid) public {
+    function emergencyWithdraw(uint256 _pid) external validatePoolByPid(_pid) {
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = userInfo[_pid][msg.sender];
+        if(_pid == 0) {
+            choco.burn(msg.sender, user.amount);
+        }
         pool.lpToken.safeTransfer(address(msg.sender), user.amount);
         emit EmergencyWithdraw(msg.sender, _pid, user.amount);
         user.amount = 0;
@@ -1844,20 +1854,21 @@ contract MasterChef is Ownable {
     }
 
     // Update dev address by the previous dev.
-    function dev(address _devaddr) public {
+    function dev(address _devaddr) external {
         require(msg.sender == devaddr, "dev: wut?");
+        require(_devaddr == address(0), "dev: wut?");
         devaddr = _devaddr;
     }
 
     // For migrating
-    function transferMacaronOwnership(address newOwner) public onlyOwner {
-        require(msg.sender != address(0), "owner can't be 0x");
+    function transferMacaronOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "owner can't be 0x");
         macaron.transferOwnership(newOwner);
     }
 
     // For migrating
-    function transferChocoOwnership(address newOwner) public onlyOwner {
-        require(msg.sender != address(0), "owner can't be 0x");
+    function transferChocoOwnership(address newOwner) external onlyOwner {
+        require(newOwner != address(0), "owner can't be 0x");
         choco.transferOwnership(newOwner);
     }
 }
