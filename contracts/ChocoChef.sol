@@ -878,7 +878,10 @@ contract ChocoChef is Ownable {
             
             pool.lpToken.safeTransfer(address(msg.sender), _amount);
             
-            _rewardDistribution(pool.smartRewardToken);
+            // This line after transfer bec. lpToken and smartRewardToken can be same
+            if(pool.isCLP) {
+                _rewardDistribution(pool.smartRewardToken);
+            }
         }
         user.rewardDebt = user.amount.mul(pool.accMacaronPerShare).div(1e12);
 
