@@ -669,7 +669,7 @@ interface ISmartChef {
     
     function withdraw(uint256 _amount) external;
     
-    function userInfo(uint256 _pid, address _user) external view returns (uint256 amount, uint256 rewardDebt);
+    function userInfo(address _user) external view returns (uint256 amount, uint256 rewardDebt);
 }
 
 contract ChocoChef is Ownable {
@@ -936,7 +936,7 @@ contract ChocoChef is Ownable {
                 ICakeMasterChef(pool.cakeChef).leaveStaking(_amount);
             }
             else {
-                (uint256 _stakedAmount, ) = ISmartChef(pool.cakeChef).userInfo(0, address(this));
+                (uint256 _stakedAmount, ) = ISmartChef(pool.cakeChef).userInfo(address(this));
                 require(_amount <= _stakedAmount, 'ISmartChef strategyWithdraw: _amount greater than _stakedAmount');
         
                 ISmartChef(pool.cakeChef).withdraw(_amount);
@@ -960,7 +960,7 @@ contract ChocoChef is Ownable {
             ICakeMasterChef(pool.cakeChef).leaveStaking(_stakedAmount);
         }
         else {
-            (uint256 _stakedAmount, ) = ISmartChef(pool.cakeChef).userInfo(0, address(this));
+            (uint256 _stakedAmount, ) = ISmartChef(pool.cakeChef).userInfo(address(this));
             ISmartChef(pool.cakeChef).withdraw(_stakedAmount);
         }
     }
