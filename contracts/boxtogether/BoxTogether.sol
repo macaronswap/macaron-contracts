@@ -828,7 +828,7 @@ contract PotController is IPotController {
     /* ========== CONSTANT ========== */
 
     uint constant private MAX_TREE_LEAVES = 5;
-    IRNGenerator private RNGenerator = IRNGenerator(0x2Eb45a1017e9E0793E05aaF0796298d9b871eCad);
+    IRNGenerator private RNGenerator = IRNGenerator(0xDbc21e4f31843C54cd7FfB09c6B0E34a4BE7533C);
 
     /* ========== STATE VARIABLES ========== */
 
@@ -1014,6 +1014,7 @@ contract BoxTogether is Ownable, PotController {
         }
 
         _treeKey = bytes32(potId);
+        createTree(_getTreeKey());
     }
 
     /* ********** MODIFIERS ********** */
@@ -1053,6 +1054,10 @@ contract BoxTogether is Ownable, PotController {
     function setFeeRatio(uint256 _feeRatio) external onlyOwner {
         require(_feeRatio <= 100, "Invalid fee range");
         feeRatio = _feeRatio;
+    }
+
+    function setTicketPerBlock(uint256 _ticketPerBlock) external onlyOwner{
+        ticketPerBlock = _ticketPerBlock;
     }
     
     /**
@@ -1323,7 +1328,8 @@ contract BoxTogether is Ownable, PotController {
      * @notice Prepare current pot for draw. Collect tickets and prepare for startDraw.
      */
     function preparePotForDraw() external onlyPotManager onlyValidState(PotState.Open) {
-        require(block.number > endBlock, "");
+        require(block.number > endBlock, "Pot end time waiting!");
+        require(users.length > 0, "There is no user for draw!");
 
         currentPotState = PotState.Ready;
         
@@ -1339,10 +1345,6 @@ contract BoxTogether is Ownable, PotController {
                     user.unusedTickets = user.unusedTickets.add(pending);
                 }
             }
-            else if(user.unusedTickets == 0) {
-                // Delete user for next time
-                _usersWillDelete.push(index);
-            }
 
             bytes32 accountID = bytes32(uint256(account));
             uint256 weight = user.unusedTickets;
@@ -1350,17 +1352,30 @@ contract BoxTogether is Ownable, PotController {
 
             setWeight(_getTreeKey(), weight, accountID);
 
+            user.rewardDebt = 0;
             user.unusedTickets = 0;
+            
+            if(user.amount == 0) {
+                // Delete user for next time
+                _usersWillDelete.push(index);
+            }
         }
 
         // Delete unnecessary users (This can be done with different method for not caught gaslimit)
-        do {
-            uint256 index = _usersWillDelete[_usersWillDelete.length-1];
-            delete isParticipant[users[index]];
-            users[index] = users[users.length - 1];
-            users.pop();
+        if(_usersWillDelete.length > 0) {
+            do {
+                uint256 index = _usersWillDelete[_usersWillDelete.length-1];
+                delete isParticipant[users[index]];
+                users[index] = users[users.length - 1];
+                users.pop();
+    
+                _usersWillDelete.pop();
+            }
+            while(_usersWillDelete.length > 0);
         }
-        while(_usersWillDelete.length > 0);
+
+        // For clear pending tickets
+        poolInfo.accTicketPerShare = 0;
     }
 
     /**
@@ -1412,7 +1427,8 @@ contract BoxTogether is Ownable, PotController {
             UserInfo storage user = userInfo[selected];
             
             if(_isSameRewardWithStakingToken()) {
-                user.amount.add(rewardPerUser);
+                user.amount = user.amount.add(rewardPerUser);
+                totalDeposits = totalDeposits.add(rewardPerUser);
             } 
             else {
                 poolInfo.rewardToken.safeTransfer(selected, rewardPerUser);
@@ -1425,6 +1441,12 @@ contract BoxTogether is Ownable, PotController {
         _histories[potId] = history;
     }
 
+    // Temporary function
+    function getWeight(address _account) public view returns (uint256) {
+        bytes32 accountID = bytes32(uint256(_account));
+        return getWeight(_getTreeKey(), accountID);
+    }
+
     /**
      * @notice Open new pot
      */
@@ -1433,6 +1455,8 @@ contract BoxTogether is Ownable, PotController {
         startBlock = block.number;
         endBlock = block.number.add(potBlockHeight);
         potId = potId + 1;
+        poolInfo.accTicketPerShare = 0;
+        poolInfo.lastRewardBlock = block.number;
 
         _treeKey = bytes32(potId);
         createTree(_getTreeKey());
