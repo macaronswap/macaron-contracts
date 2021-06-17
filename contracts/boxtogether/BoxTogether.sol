@@ -945,6 +945,7 @@ contract BoxTogether is Ownable, PotController {
     PotState public currentPotState;
     bytes32 private _treeKey;
     uint256 private _totalTicket;
+    uint256[] private _usersWillDelete;
 
     // The block number when pot starts.
     uint256 public startBlock;
@@ -1298,7 +1299,8 @@ contract BoxTogether is Ownable, PotController {
      * @notice Withdraw unexpected tokens sent to the owner
      */
     function inCaseTokensGetStuck(address _token) external onlyOwner {
-        require(_token != address(stakingToken), "Token cannot be same as deposit token");
+        // for testing
+        // require(_token != address(stakingToken), "Token cannot be same as deposit token");
 
         uint256 amount = IBEP20(_token).balanceOf(address(this));
         IBEP20(_token).safeTransfer(msg.sender, amount);
@@ -1321,25 +1323,25 @@ contract BoxTogether is Ownable, PotController {
      * @notice Prepare current pot for draw. Collect tickets and prepare for startDraw.
      */
     function preparePotForDraw() external onlyPotManager onlyValidState(PotState.Open) {
+        require(block.number > endBlock, "");
+
         currentPotState = PotState.Ready;
         
         // Determining user weights and setting for draw
-        PoolInfo storage pool = poolInfo;
         updatePool();
-        uint256[] storage usersWillDelete;
         for (uint256 index = 0; index < users.length; index++) {
             address account = users[index];
             // Harvest Tickets
             UserInfo storage user = userInfo[account];
             if (user.amount > 0) {
-                uint256 pending = user.amount.mul(pool.accTicketPerShare).div(1e12).sub(user.rewardDebt);
+                uint256 pending = user.amount.mul(poolInfo.accTicketPerShare).div(1e12).sub(user.rewardDebt);
                 if(pending > 0) {
                     user.unusedTickets = user.unusedTickets.add(pending);
                 }
             }
             else if(user.unusedTickets == 0) {
                 // Delete user for next time
-                usersWillDelete.push(index);
+                _usersWillDelete.push(index);
             }
 
             bytes32 accountID = bytes32(uint256(account));
@@ -1352,11 +1354,13 @@ contract BoxTogether is Ownable, PotController {
         }
 
         // Delete unnecessary users (This can be done with different method for not caught gaslimit)
-        for (uint256 index = usersWillDelete.length-1; index >= 0; index--) {
+        do {
+            uint256 index = _usersWillDelete[_usersWillDelete.length-1];
             delete isParticipant[users[index]];
             users[index] = users[users.length - 1];
             users.pop();
         }
+        while(_usersWillDelete.length > 0);
     }
 
     /**
