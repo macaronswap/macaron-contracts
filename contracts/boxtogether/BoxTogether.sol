@@ -12,6 +12,7 @@ $$ | \_/ $$ |$$ |  $$ |\$$$$$$  |$$ |  $$ |$$ |  $$ | $$$$$$  |$$ | \$$ |\$$$$$$
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 pragma solidity 0.6.12;
+pragma experimental ABIEncoderV2;
 
 /*
  * @dev Provides information about the current execution context, including the
@@ -642,13 +643,152 @@ library Address {
     }
 }
 
-interface ICakeStrategy {
-    function deposit(uint256 _amount) external;
-    function withdraw(uint256 _amount) external;
-    function withdrawToController(uint256 _amount) external;
+library Math {
+    /**
+     * @dev Returns the largest of two numbers.
+     */
+    function max(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a >= b ? a : b;
+    }
+
+    /**
+     * @dev Returns the smallest of two numbers.
+     */
+    function min(uint256 a, uint256 b) internal pure returns (uint256) {
+        return a < b ? a : b;
+    }
+
+    /**
+     * @dev Returns the average of two numbers. The result is rounded towards
+     * zero.
+     */
+    function average(uint256 a, uint256 b) internal pure returns (uint256) {
+        // (a + b) / 2 can overflow, so we distribute
+        return (a / 2) + (b / 2) + ((a % 2 + b % 2) / 2);
+    }
 }
 
-interface ICakeMasterChef {
+library SortitionSumTreeFactory {
+
+    struct SortitionSumTree {
+        uint K;
+        uint[] stack;
+        uint[] nodes;
+        mapping(bytes32 => uint) IDsToNodeIndexes;
+        mapping(uint => bytes32) nodeIndexesToIDs;
+    }
+
+    /* ========== STATE VARIABLES ========== */
+
+    struct SortitionSumTrees {
+        mapping(bytes32 => SortitionSumTree) sortitionSumTrees;
+    }
+
+    /* ========== PUBLIC FUNCTIONS ========== */
+
+    function createTree(SortitionSumTrees storage self, bytes32 _key, uint _K) public {
+        SortitionSumTree storage tree = self.sortitionSumTrees[_key];
+        require(_K > 1, "K must be greater than one.");
+        tree.K = _K;
+        tree.stack = new uint[](0);
+        tree.nodes = new uint[](0);
+        tree.nodes.push(0);
+    }
+
+    function set(SortitionSumTrees storage self, bytes32 _key, uint _value, bytes32 _ID) public {
+        SortitionSumTree storage tree = self.sortitionSumTrees[_key];
+        uint treeIndex = Math.min(tree.IDsToNodeIndexes[_ID], tree.nodes.length - 1);
+
+        if (treeIndex == 0) {
+            if (_value != 0) {
+                if (tree.stack.length == 0) {
+                    treeIndex = tree.nodes.length;
+                    tree.nodes.push(_value);
+
+                    if (treeIndex != 1 && (treeIndex - 1) % tree.K == 0) {
+                        uint parentIndex = treeIndex / tree.K;
+                        bytes32 parentID = tree.nodeIndexesToIDs[parentIndex];
+                        uint newIndex = treeIndex + 1;
+                        tree.nodes.push(tree.nodes[parentIndex]);
+                        delete tree.nodeIndexesToIDs[parentIndex];
+                        tree.IDsToNodeIndexes[parentID] = newIndex;
+                        tree.nodeIndexesToIDs[newIndex] = parentID;
+                    }
+                } else {
+                    treeIndex = tree.stack[tree.stack.length - 1];
+                    tree.stack.pop();
+                    tree.nodes[treeIndex] = _value;
+                }
+
+                tree.IDsToNodeIndexes[_ID] = treeIndex;
+                tree.nodeIndexesToIDs[treeIndex] = _ID;
+
+                updateParents(self, _key, treeIndex, true, _value);
+            }
+        } else {
+            if (_value == 0) {
+                uint value = tree.nodes[treeIndex];
+                tree.nodes[treeIndex] = 0;
+
+                tree.stack.push(treeIndex);
+
+                delete tree.IDsToNodeIndexes[_ID];
+                delete tree.nodeIndexesToIDs[treeIndex];
+
+                updateParents(self, _key, treeIndex, false, value);
+            } else if (_value != tree.nodes[treeIndex]) {// New, non zero value.
+                bool plusOrMinus = tree.nodes[treeIndex] <= _value;
+                uint plusOrMinusValue = plusOrMinus ? _value - tree.nodes[treeIndex] : tree.nodes[treeIndex] - _value;
+                tree.nodes[treeIndex] = _value;
+
+                updateParents(self, _key, treeIndex, plusOrMinus, plusOrMinusValue);
+            }
+        }
+    }
+
+    function draw(SortitionSumTrees storage self, bytes32 _key, uint _drawnNumber) public returns (bytes32 ID) {
+        SortitionSumTree storage tree = self.sortitionSumTrees[_key];
+        uint treeIndex = 0;
+        uint currentDrawnNumber = _drawnNumber % tree.nodes[0];
+
+        while ((tree.K * treeIndex) + 1 < tree.nodes.length)
+            for (uint i = 1; i <= tree.K; i++) {
+                uint nodeIndex = (tree.K * treeIndex) + i;
+                uint nodeValue = tree.nodes[nodeIndex];
+
+                if (currentDrawnNumber >= nodeValue) currentDrawnNumber -= nodeValue;
+                else {
+                    treeIndex = nodeIndex;
+                    break;
+                }
+            }
+
+        ID = tree.nodeIndexesToIDs[treeIndex];
+        tree.nodes[treeIndex] = 0;
+    }
+
+    function stakeOf(SortitionSumTrees storage self, bytes32 _key, bytes32 _ID) public view returns (uint value) {
+        SortitionSumTree storage tree = self.sortitionSumTrees[_key];
+        uint treeIndex = Math.min(tree.IDsToNodeIndexes[_ID], tree.nodes.length - 1);
+
+        if (treeIndex == 0) value = 0;
+        else value = tree.nodes[treeIndex];
+    }
+
+    /* ========== PRIVATE FUNCTIONS ========== */
+
+    function updateParents(SortitionSumTrees storage self, bytes32 _key, uint _treeIndex, bool _plusOrMinus, uint _value) private {
+        SortitionSumTree storage tree = self.sortitionSumTrees[_key];
+
+        uint parentIndex = _treeIndex;
+        while (parentIndex != 0) {
+            parentIndex = (parentIndex - 1) / tree.K;
+            tree.nodes[parentIndex] = _plusOrMinus ? tree.nodes[parentIndex] + _value : tree.nodes[parentIndex] - _value;
+        }
+    }
+}
+
+interface IMacaronMasterChef {
     function deposit(uint256 _poolId, uint256 _amount) external;
 
     function withdraw(uint256 _poolId, uint256 _amount) external;
@@ -657,24 +797,97 @@ interface ICakeMasterChef {
 
     function leaveStaking(uint256 _amount) external;
 
-    function pendingCake(uint256 _pid, address _user) external view returns (uint256);
+    function pendingMacaron(uint256 _pid, address _user) external view returns (uint256);
 
     function userInfo(uint256 _pid, address _user) external view returns (uint256 amount, uint256 rewardDebt);
 
     function emergencyWithdraw(uint256 _pid) external;
 }
 
-interface ISmartChef {
+interface IChocoChef {
     function deposit(uint256 _amount) external;
     
     function withdraw(uint256 _amount) external;
     
-    function userInfo(uint256 _pid, address _user) external view returns (uint256 amount, uint256 rewardDebt);
+    function userInfo(address _user) external view returns (uint256 amount, uint256 rewardDebt);
+
+    function pendingReward(address _user) external view returns (uint256);
 }
 
-contract BoxTogether is Ownable {
+interface IPotController {
+    function numbersDrawn(uint potId, bytes32 requestId, uint256 randomness) external;
+}
+
+interface IRNGenerator {
+    function getRandomNumber(uint _potId, uint256 userProvidedSeed) external returns(bytes32 requestId);
+}
+
+contract PotController is IPotController {
+    using SortitionSumTreeFactory for SortitionSumTreeFactory.SortitionSumTrees;
+
+    /* ========== CONSTANT ========== */
+
+    uint constant private MAX_TREE_LEAVES = 5;
+    IRNGenerator private RNGenerator = IRNGenerator(0x2Eb45a1017e9E0793E05aaF0796298d9b871eCad);
+
+    /* ========== STATE VARIABLES ========== */
+
+    SortitionSumTreeFactory.SortitionSumTrees private _sortitionSumTree;
+    bytes32 private _requestId;  // random number
+
+    uint internal _randomness;
+    uint public potId;
+    uint public startedAt;
+
+    /* ========== MODIFIERS ========== */
+
+    modifier onlyRandomGenerator() {
+        require(msg.sender == address(RNGenerator), "Only random generator");
+        _;
+    }
+
+    /* ========== INTERNAL FUNCTIONS ========== */
+
+    function createTree(bytes32 key) internal {
+        _sortitionSumTree.createTree(key, MAX_TREE_LEAVES);
+    }
+
+    function getWeight(bytes32 key, bytes32 _ID) internal view returns (uint) {
+        return _sortitionSumTree.stakeOf(key, _ID);
+    }
+
+    function setWeight(bytes32 key, uint weight, bytes32 _ID) internal {
+        _sortitionSumTree.set(key, weight, _ID);
+    }
+
+    function draw(bytes32 key, uint randomNumber) internal returns (address) {
+        return address(uint(_sortitionSumTree.draw(key, randomNumber)));
+    }
+
+    function getRandomNumber(uint weight) internal {
+        _requestId = RNGenerator.getRandomNumber(potId, weight);
+    }
+
+    /* ========== CALLBACK FUNCTIONS ========== */
+
+    function numbersDrawn(uint _potId, bytes32 requestId, uint randomness) override external onlyRandomGenerator {
+        if (_requestId == requestId && potId == _potId) {
+            _randomness = randomness;
+        }
+    }
+}
+
+contract BoxTogether is Ownable, PotController {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
+
+    enum PotState {
+        Wait,
+        Open,
+        Ready,
+        Draw,
+        Dist
+    }
 
     // Info of each user.
     struct UserInfo {
@@ -683,36 +896,68 @@ contract BoxTogether is Ownable {
         uint256 unusedTickets; // Unused earning tickets.
     }
 
-    // Info of each pool.
     struct PoolInfo {
-        IBEP20 lpToken;           // Address of LP token contract.
-        uint256 lastRewardBlock;  // Last block number that MCRNs distribution occurs.
-        uint256 accTicketPerShare; // Accumulated MCRNs per share, times 1e12. See below.
-        bool isCLP;                 // Pool token is CLP or not
-        address cakeChef;           // CAKE MasterChef or SmartChef for Strategy
+        IBEP20 stakingToken;             // Address of LP token contract.
+        uint256 lastRewardBlock;    // Last block number that MCRNs distribution occurs.
+        uint256 accTicketPerShare;  // Accumulated MCRNs per share, times 1e12. See below.
+        address masterChef;         // MasterChef or SmartChef/ChocoChef for Strategy
+        uint256 pid;                // MasterChef pool Id
         bool isMaster;              // MasterChef or SmartChef
-        address syrup;              // If Chef is MasterChef, need to know syrup token
-        address smartRewardToken;   // If Chef is SmartChef, need to know SmartChef reward token
+        address syrup;              // If Chef is MasterChef and pid = 0, need to know syrup token
+        IBEP20 rewardToken;        // Need to know reward token for use reward distribution
     }
+
+    // Pot Info for pot history
+    struct PotInfo {
+        uint256 potId;              // Pot id
+        uint256 startBlock;         // Pot start block
+        uint256 endBlock;           // Pot end block, no more tickets will be distributed after endBlock
+        uint256 totalDeposits;      // Total deposited amount when pot closing
+        uint256 date;
+        address[] winners;          // Pot winner accounts
+        uint256[] winnerTickets;
+        uint256 rewardPerUser;
+        uint256 totalRewards;
+    }
+
+    mapping (uint256 => PotInfo) private _histories;
     
     // Deployer
     address deployer;
+    address feeTreasury;
+    address potManager;
 
     // The STAKING TOKEN!
     IBEP20 public stakingToken;
-
+    
     uint256 public ticketPerBlock;
     
-    // Info of each pool.
-    PoolInfo[] public poolInfo;
+    // Info of pool.
+    PoolInfo public poolInfo;
     // Info of each user that stakes LP tokens.
     mapping (address => UserInfo) public userInfo;
-    // The block number when MCRN mining starts.
+
+    // Pot participants
+    address[] users;
+    mapping (address => bool) public isParticipant;
+    uint256 public WINNER_COUNT = 1;
+
+    PotState public currentPotState;
+    bytes32 private _treeKey;
+    uint256 private _totalTicket;
+
+    // The block number when pot starts.
     uint256 public startBlock;
-    // The block number when MCRN mining ends.
-    uint256 public bonusEndBlock;
-    // Total lpSupply for default pool
-    uint256 public lpSupply = 0;
+    // The block number when pot ends.
+    uint256 public endBlock;
+    // Pot Block height for pot period
+    uint256 public potBlockHeight;
+    // Total deposits for default pool
+    uint256 public totalDeposits = 0;
+
+    uint256 public minAmount;
+    uint256 public maxAmount;
+    uint public feeRatio;
     
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
@@ -722,103 +967,185 @@ contract BoxTogether is Ownable {
         IBEP20 _stakingToken,
         uint256 _ticketPerBlock,
         uint256 _startBlock,
-        uint256 _bonusEndBlock,
-        bool _isCLP,
-        address _cakeChef,
+        uint256 _potBlockHeight,
+        uint256 _minAmount,
+        uint256 _maxAmount,
+        address _masterChef,
+        uint256 _pid,
         bool _isMaster,
         address _syrup,
-        address _smartRewardToken
+        IBEP20 _rewardToken,
+        address _feeTreasury
     ) public {
         stakingToken = _stakingToken;
         ticketPerBlock = _ticketPerBlock;
+        potId = 1;
+        currentPotState = PotState.Open;
         startBlock = _startBlock;
-        bonusEndBlock = _bonusEndBlock;
+        potBlockHeight = _potBlockHeight;
+        endBlock = _startBlock.add(_potBlockHeight);
+        minAmount = _minAmount;
+        maxAmount = _maxAmount;
+        feeRatio = 20;
 
         // staking pool
-        poolInfo.push(PoolInfo({
-            lpToken: _stakingToken,
+        poolInfo = PoolInfo({
+            stakingToken: _stakingToken,
             lastRewardBlock: startBlock,
             accTicketPerShare: 0,
-            isCLP: _isCLP,
-            cakeChef: _cakeChef,
+            masterChef: _masterChef,
+            pid: _pid,
             isMaster: _isMaster,
             syrup: _syrup,
-            smartRewardToken: _smartRewardToken
-        }));
+            rewardToken: _rewardToken
+        });
 
         deployer = msg.sender;
+        potManager = msg.sender;
+        feeTreasury = _feeTreasury;
         
-        if(_isCLP) {
-            require(_cakeChef != address(0), "_cakeChef can't be 0x");
-            IBEP20(_stakingToken).safeApprove(address(_cakeChef), type(uint256).max);
-            
-            if(_isMaster) {
-                require(_syrup != address(0), "_syrup can't be 0x");
-                IBEP20(_syrup).safeApprove(address(_cakeChef), type(uint256).max);    
-            }
+        require(_masterChef != address(0), "_masterChef can't be 0x");
+        IBEP20(_stakingToken).safeApprove(address(_masterChef), type(uint256).max);
+        
+        if(_isMaster) {
+            require(_syrup != address(0), "_syrup can't be 0x");
+            IBEP20(_syrup).safeApprove(address(_masterChef), type(uint256).max);    
         }
+
+        _treeKey = bytes32(potId);
+    }
+
+    /* ********** MODIFIERS ********** */
+
+    modifier onlyPotManager() {
+        require(msg.sender == potManager, "!manager");
+        _;
+    }
+
+    modifier onlyValidState(PotState _state) {
+        require(getPotState() == _state, "Invalid pot state");
+        _;
+    }
+
+    function setPotManager(address _potManager) external onlyOwner {
+        require(_potManager != address(0), "_potManager can't be 0x");
+        potManager = _potManager;
+    }
+
+    function setFeeTreasury(address _feeTreasury) external onlyOwner {
+        require(_feeTreasury != address(0), "_feeTreasury can't be 0x");
+        feeTreasury = feeTreasury;
     }
 
     function stopReward() external onlyOwner {
-        bonusEndBlock = block.number;
+        endBlock = block.number;
     }
     
-    function setRewardEndBlock(uint256 _bonusEndBlock) external onlyOwner {
-        bonusEndBlock = _bonusEndBlock;
+    function setRewardEndBlock(uint256 _endBlock) external onlyOwner {
+        endBlock = _endBlock;
+    }
+
+    function setWinnerCount(uint256 _winnerCount) external onlyOwner {
+        WINNER_COUNT = _winnerCount;
+    }
+
+    function setFeeRatio(uint256 _feeRatio) external onlyOwner {
+        require(_feeRatio <= 100, "Invalid fee range");
+        feeRatio = _feeRatio;
     }
     
+    /**
+     * @notice Get current pot state
+     */
+    function getPotState() public view returns (PotState) {
+        if(startBlock > block.number) {
+            return PotState.Wait;
+        }
+        if(endBlock > block.number) {
+            return PotState.Open;
+        }
+        return currentPotState;
+    }
+
     // Return reward multiplier over the given _from to _to block.
     function getMultiplier(uint256 _from, uint256 _to) public view returns (uint256) {
-        if (_to <= bonusEndBlock) {
+        if (_to <= endBlock) {
             return _to.sub(_from);
-        } else if (_from >= bonusEndBlock) {
+        } else if (_from >= endBlock) {
             return 0;
         } else {
-            return bonusEndBlock.sub(_from);
+            return endBlock.sub(_from);
         }
     }
 
     // View function to see pending Reward on frontend.
     function pendingTickets(address _user) external view returns (uint256) {
-        PoolInfo storage pool = poolInfo[0];
+        PoolInfo storage pool = poolInfo;
         UserInfo storage user = userInfo[_user];
         uint256 accTicketPerShare = pool.accTicketPerShare;
-        if (block.number > pool.lastRewardBlock && lpSupply != 0) {
+        if (block.number > pool.lastRewardBlock && totalDeposits != 0) {
             uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
-            accTicketPerShare = accTicketPerShare.add(multiplier.mul(ticketPerBlock).mul(1e12).div(lpSupply));
+            accTicketPerShare = accTicketPerShare.add(multiplier.mul(ticketPerBlock).mul(1e12).div(totalDeposits));
         }
         return user.amount.mul(accTicketPerShare).div(1e12).sub(user.rewardDebt).add(user.unusedTickets);
     }
 
     // Update reward variables of the given pool to be up-to-date.
-    function updatePool(uint256 _pid) public {
-        PoolInfo storage pool = poolInfo[_pid];
+    function updatePool() public {
+        PoolInfo storage pool = poolInfo;
         if (block.number <= pool.lastRewardBlock) {
             return;
         }
-        if (lpSupply == 0) {
+        if (totalDeposits == 0) {
             pool.lastRewardBlock = block.number;
             return;
         }
         uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
-        pool.accTicketPerShare = pool.accTicketPerShare.add(multiplier.mul(ticketPerBlock).mul(1e12).div(lpSupply));
+        pool.accTicketPerShare = pool.accTicketPerShare.add(multiplier.mul(ticketPerBlock).mul(1e12).div(totalDeposits));
         pool.lastRewardBlock = block.number;
     }
 
-    // Update reward variables for all pools. Be careful of gas spending!
-    function massUpdatePools() external {
-        uint256 length = poolInfo.length;
-        for (uint256 pid = 0; pid < length; ++pid) {
-            updatePool(pid);
+    function balanceOfPool() public view returns (uint256) {
+        uint256 stakeTokenBal = IBEP20(poolInfo.stakingToken).balanceOf(address(this));
+        if(poolInfo.isMaster) {
+            (uint256 amount, ) = IMacaronMasterChef(poolInfo.masterChef).userInfo(poolInfo.pid, address(this));
+            uint256 pending = _isSameRewardWithStakingToken() ? balanceOfPoolPending() : 0;
+            return amount.add(stakeTokenBal).add(pending);
+        }
+        else {
+            (uint256 amount, ) = IChocoChef(poolInfo.masterChef).userInfo(address(this));
+            uint256 pending = _isSameRewardWithStakingToken() ? balanceOfPoolPending() : 0;
+            return amount.add(stakeTokenBal).add(pending);
+        }        
+    }
+
+    function balanceOfPoolPending() public view returns (uint256) {
+        if(poolInfo.isMaster) {
+            return IMacaronMasterChef(poolInfo.masterChef).pendingMacaron(poolInfo.pid, address(this));
+        }
+        else {
+            return IChocoChef(poolInfo.masterChef).pendingReward(address(this));
         }
     }
 
+    function balanceOfRewards() public view returns (uint256) {
+        if(_isSameRewardWithStakingToken()) {
+            return balanceOfPool().sub(totalDeposits);
+        }
+        else {
+            uint256 rewardTokenBal = IBEP20(poolInfo.rewardToken).balanceOf(address(this));
+            return balanceOfPoolPending().add(rewardTokenBal);
+        }
+    }
 
-    // Stake STAKING tokens to ChocoChef
-    function deposit(uint256 _amount) external {
-        PoolInfo storage pool = poolInfo[0];
+    // Stake STAKING tokens to BoxTogether
+    function deposit(uint256 _amount) external onlyValidState(PotState.Open) {
+        PoolInfo storage pool = poolInfo;
         UserInfo storage user = userInfo[msg.sender];
-        updatePool(0);
+
+        require(_amount >= minAmount && _amount.add(user.amount) <= maxAmount, "Deposit mix/max issue: invalid input amount");
+
+        updatePool();
         if (user.amount > 0) {
             uint256 pending = user.amount.mul(pool.accTicketPerShare).div(1e12).sub(user.rewardDebt);
             if(pending > 0) {
@@ -826,40 +1153,42 @@ contract BoxTogether is Ownable {
             }
         }
         if(_amount > 0) {
-            pool.lpToken.safeTransferFrom(address(msg.sender), address(this), _amount);
+            pool.stakingToken.safeTransferFrom(address(msg.sender), address(this), _amount);
             user.amount = user.amount.add(_amount);
-            lpSupply = lpSupply.add(_amount);
+            totalDeposits = totalDeposits.add(_amount);
             
             // Stake CLP to PC
-            if(pool.isCLP) {
-                strategyDeposit(pool, _amount);
-            }
+            strategyDeposit(pool, _amount);
         }
         user.rewardDebt = user.amount.mul(pool.accTicketPerShare).div(1e12);
+
+        // Add user to array for navigate in users
+        if(isParticipant[msg.sender] == false) {
+            users.push(msg.sender);
+            isParticipant[msg.sender] = true;
+        }
 
         emit Deposit(msg.sender, _amount);
     }
 
-    // Withdraw STAKING tokens from STAKING.
-    function withdraw(uint256 _amount) external {
-        PoolInfo storage pool = poolInfo[0];
+    // Withdraw STAKING tokens from BoxTogether.
+    function withdraw(uint256 _amount) external onlyValidState(PotState.Open) {
+        PoolInfo storage pool = poolInfo;
         UserInfo storage user = userInfo[msg.sender];
         require(user.amount >= _amount, "withdraw: not good");
-        updatePool(0);
+        updatePool();
         uint256 pending = user.amount.mul(pool.accTicketPerShare).div(1e12).sub(user.rewardDebt);
         if(pending > 0) {
             user.unusedTickets = user.unusedTickets.add(pending);
         }
         if(_amount > 0) {
             user.amount = user.amount.sub(_amount);
-            lpSupply = lpSupply.sub(_amount);
+            totalDeposits = totalDeposits.sub(_amount);
             
             // Unstake CLP from PC
-            if(pool.isCLP) {
-                strategyWithdraw(pool, _amount);
-            }
+            _strategyWithdraw(pool, _amount);
             
-            pool.lpToken.safeTransfer(address(msg.sender), _amount);
+            pool.stakingToken.safeTransfer(address(msg.sender), _amount);
         }
         user.rewardDebt = user.amount.mul(pool.accTicketPerShare).div(1e12);
 
@@ -867,10 +1196,10 @@ contract BoxTogether is Ownable {
     }
 
     // Withdraw without caring about rewards. EMERGENCY ONLY.
-    function emergencyWithdraw() external {
-        PoolInfo storage pool = poolInfo[0];
+    function emergencyWithdraw() external onlyValidState(PotState.Open) {
+        PoolInfo storage pool = poolInfo;
         UserInfo storage user = userInfo[msg.sender];
-        pool.lpToken.safeTransfer(address(msg.sender), user.amount);
+        pool.stakingToken.safeTransfer(address(msg.sender), user.amount);
         user.amount = 0;
         user.rewardDebt = 0;
         user.unusedTickets = 0;
@@ -884,48 +1213,224 @@ contract BoxTogether is Ownable {
 
         if (_stakeBal > 0) {
             if(pool.isMaster) {
-                ICakeMasterChef(pool.cakeChef).enterStaking(_stakeBal);
-                
-                uint256 _syrupBal = IBEP20(pool.syrup).balanceOf(address(this));
-                require(_syrupBal >= _stakeBal, 'Strategy: wrong syrup amount');
+                if(pool.pid == 0) {
+                    // MasterChef default pool
+                    IMacaronMasterChef(pool.masterChef).enterStaking(_stakeBal);
+                    uint256 _syrupBal = IBEP20(pool.syrup).balanceOf(address(this));
+                    require(_syrupBal >= _stakeBal, 'Strategy: wrong syrup amount');
+                }
+                else {
+                    // MasterChef other pools
+                    IMacaronMasterChef(pool.masterChef).deposit(pool.pid, _stakeBal);
+                }
             }
             else {
-                ISmartChef(pool.cakeChef).deposit(_stakeBal);
+                // SmartChef, SmartChefInitizable or ChocoChef
+                IChocoChef(pool.masterChef).deposit(_stakeBal);
             }
         }
     }
     
-    function strategyWithdraw(PoolInfo memory pool, uint256 _amount) internal {
-        
+    function _strategyWithdraw(PoolInfo memory pool, uint256 _amount) internal {        
         uint256 _balance = IBEP20(stakingToken).balanceOf(address(this));
         
         if (_balance < _amount) {
             if(pool.isMaster) {
-                (uint256 _stakedAmount, ) = ICakeMasterChef(pool.cakeChef).userInfo(0, address(this));
-                require(_amount <= _stakedAmount, 'ICakeMasterChef strategyWithdraw: _amount greater than _stakedAmount');
+                (uint256 _stakedAmount, ) = IMacaronMasterChef(pool.masterChef).userInfo(pool.pid, address(this));
+                require(_amount <= _stakedAmount, 'IMacaronMasterChef _strategyWithdraw: _amount greater than _stakedAmount');
         
-                ICakeMasterChef(pool.cakeChef).leaveStaking(_amount);
+                if(pool.pid == 0) {
+                    // MasterChef default pool
+                    IMacaronMasterChef(pool.masterChef).leaveStaking(_amount);
+                }
+                else {
+                    // MasterChef other pools
+                    IMacaronMasterChef(pool.masterChef).withdraw(pool.pid, _amount);
+                }
             }
             else {
-                (uint256 _stakedAmount, ) = ISmartChef(pool.cakeChef).userInfo(0, address(this));
-                require(_amount <= _stakedAmount, 'ISmartChef strategyWithdraw: _amount greater than _stakedAmount');
+                // SmartChef, SmartChefInitizable or ChocoChef
+                (uint256 _stakedAmount, ) = IChocoChef(pool.masterChef).userInfo(address(this));
+                require(_amount <= _stakedAmount, 'IChocoChef _strategyWithdraw: _amount greater than _stakedAmount');
         
-                ISmartChef(pool.cakeChef).withdraw(_amount);
+                IChocoChef(pool.masterChef).withdraw(_amount);
             }
-        }
-        
+        }        
     }
     
-    function _unstakeAll() external onlyOwner {
-        PoolInfo storage pool = poolInfo[0];
+    function unstakeAll() external onlyOwner {
+        PoolInfo storage pool = poolInfo;
         
         if(pool.isMaster) {
-            (uint256 _stakedAmount, ) = ICakeMasterChef(pool.cakeChef).userInfo(0, address(this));
-            ICakeMasterChef(pool.cakeChef).leaveStaking(_stakedAmount);
+            (uint256 _stakedAmount, ) = IMacaronMasterChef(pool.masterChef).userInfo(pool.pid, address(this));
+            if(pool.pid == 0) {
+                IMacaronMasterChef(pool.masterChef).leaveStaking(_stakedAmount);
+            }
+            else {
+                IMacaronMasterChef(pool.masterChef).withdraw(pool.pid, _stakedAmount);
+            }
         }
         else {
-            (uint256 _stakedAmount, ) = ISmartChef(pool.cakeChef).userInfo(0, address(this));
-            ISmartChef(pool.cakeChef).withdraw(_stakedAmount);
+            (uint256 _stakedAmount, ) = IChocoChef(pool.masterChef).userInfo(address(this));
+            IChocoChef(pool.masterChef).withdraw(_stakedAmount);
         }
+    }
+
+    function _harvestPendingRewards() internal {
+         if(poolInfo.isMaster) {
+            if(poolInfo.pid == 0) {
+                IMacaronMasterChef(poolInfo.masterChef).enterStaking(0);
+            }
+            else {
+                IMacaronMasterChef(poolInfo.masterChef).deposit(poolInfo.pid, 0);
+            }
+        }
+        else {
+            IChocoChef(poolInfo.masterChef).deposit(0);
+        }
+    }
+
+    function _isSameRewardWithStakingToken() internal view returns (bool) {
+        return address(poolInfo.stakingToken) == address(poolInfo.rewardToken);
+    }
+
+    /**
+     * @notice Withdraw unexpected tokens sent to the owner
+     */
+    function inCaseTokensGetStuck(address _token) external onlyOwner {
+        require(_token != address(stakingToken), "Token cannot be same as deposit token");
+
+        uint256 amount = IBEP20(_token).balanceOf(address(this));
+        IBEP20(_token).safeTransfer(msg.sender, amount);
+    }
+
+    function setAmountMinMax(uint _min, uint _max) external onlyOwner {
+        minAmount = _min;
+        maxAmount = _max;
+    }
+
+    function potHistoryOf(uint _potId) public view returns (PotInfo memory) {
+        return _histories[_potId];
+    }
+
+    function _getTreeKey() private view returns(bytes32) {
+        return _treeKey == bytes32(0) ? keccak256("MacaronSwap/BoxTogether") : _treeKey;
+    }
+
+    /**
+     * @notice Prepare current pot for draw. Collect tickets and prepare for startDraw.
+     */
+    function preparePotForDraw() external onlyPotManager onlyValidState(PotState.Open) {
+        currentPotState = PotState.Ready;
+        
+        // Determining user weights and setting for draw
+        PoolInfo storage pool = poolInfo;
+        updatePool();
+        uint256[] storage usersWillDelete;
+        for (uint256 index = 0; index < users.length; index++) {
+            address account = users[index];
+            // Harvest Tickets
+            UserInfo storage user = userInfo[account];
+            if (user.amount > 0) {
+                uint256 pending = user.amount.mul(pool.accTicketPerShare).div(1e12).sub(user.rewardDebt);
+                if(pending > 0) {
+                    user.unusedTickets = user.unusedTickets.add(pending);
+                }
+            }
+            else if(user.unusedTickets == 0) {
+                // Delete user for next time
+                usersWillDelete.push(index);
+            }
+
+            bytes32 accountID = bytes32(uint256(account));
+            uint256 weight = user.unusedTickets;
+            _totalTicket = _totalTicket.add(weight);
+
+            setWeight(_getTreeKey(), weight, accountID);
+
+            user.unusedTickets = 0;
+        }
+
+        // Delete unnecessary users (This can be done with different method for not caught gaslimit)
+        for (uint256 index = usersWillDelete.length-1; index >= 0; index--) {
+            delete isParticipant[users[index]];
+            users[index] = users[users.length - 1];
+            users.pop();
+        }
+    }
+
+    /**
+     * @notice Start current pot draw
+     */
+    function startDraw() external onlyPotManager onlyValidState(PotState.Ready)  {
+        currentPotState = PotState.Draw;
+        getRandomNumber(_totalTicket);
+    }
+
+    /**
+     * @notice Distribute rewards to winners
+     */
+    function distributeDrawRewards() external onlyPotManager onlyValidState(PotState.Draw)  {
+        currentPotState = PotState.Dist;
+
+        uint256 winnerCount = Math.min(WINNER_COUNT, users.length);
+        uint256 totalRewards = balanceOfRewards();
+
+        uint256 fee = totalRewards.mul(feeRatio).div(100);
+        totalRewards = totalRewards.sub(fee);
+
+        if (fee > 0) {
+            if(_isSameRewardWithStakingToken()) {
+                _strategyWithdraw(poolInfo, fee);
+            }
+            else {
+                _harvestPendingRewards();
+            }
+            poolInfo.rewardToken.safeTransfer(feeTreasury, fee);
+        }
+
+        uint256 rewardPerUser = totalRewards.div(winnerCount);
+
+        PotInfo memory history;
+        history.startBlock = startBlock;
+        history.endBlock = endBlock;
+        history.totalDeposits = totalDeposits;
+        history.date = block.timestamp;
+        history.winners = new address[](winnerCount);
+        history.winnerTickets = new uint256[](winnerCount);
+        history.rewardPerUser = rewardPerUser;
+        history.totalRewards = totalRewards;
+
+        for (uint i = 0; i < winnerCount; i++) {
+            uint rn = uint256(keccak256(abi.encode(_randomness, i))).mod(_totalTicket);
+            address selected = draw(_getTreeKey(), rn);
+            bytes32 accountID = bytes32(uint256(selected));
+            UserInfo storage user = userInfo[selected];
+            
+            if(_isSameRewardWithStakingToken()) {
+                user.amount.add(rewardPerUser);
+            } 
+            else {
+                poolInfo.rewardToken.safeTransfer(selected, rewardPerUser);
+            }
+            
+            history.winners[i] = selected;
+            history.winnerTickets[i] = getWeight(_getTreeKey(), accountID);
+        }
+
+        _histories[potId] = history;
+    }
+
+    /**
+     * @notice Open new pot
+     */
+    function openNewPot() external onlyPotManager onlyValidState(PotState.Dist)  {
+        currentPotState = PotState.Open;
+        startBlock = block.number;
+        endBlock = block.number.add(potBlockHeight);
+        potId = potId + 1;
+
+        _treeKey = bytes32(potId);
+        createTree(_getTreeKey());
     }
 }
