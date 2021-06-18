@@ -746,7 +746,7 @@ library SortitionSumTreeFactory {
         }
     }
 
-    function draw(SortitionSumTrees storage self, bytes32 _key, uint _drawnNumber) public returns (bytes32 ID) {
+    function draw(SortitionSumTrees storage self, bytes32 _key, uint _drawnNumber) public returns (bytes32 ID, uint weight) {
         SortitionSumTree storage tree = self.sortitionSumTrees[_key];
         uint treeIndex = 0;
         uint currentDrawnNumber = _drawnNumber % tree.nodes[0];
@@ -764,6 +764,7 @@ library SortitionSumTreeFactory {
             }
 
         ID = tree.nodeIndexesToIDs[treeIndex];
+        weight = tree.nodes[treeIndex];
         tree.nodes[treeIndex] = 0;
     }
 
@@ -837,7 +838,6 @@ contract PotController is IPotController {
 
     uint internal _randomness;
     uint public potId;
-    uint public startedAt;
 
     /* ========== MODIFIERS ========== */
 
@@ -860,8 +860,9 @@ contract PotController is IPotController {
         _sortitionSumTree.set(key, weight, _ID);
     }
 
-    function draw(bytes32 key, uint randomNumber) internal returns (address) {
-        return address(uint(_sortitionSumTree.draw(key, randomNumber)));
+    function draw(bytes32 key, uint randomNumber) internal returns (address, uint) {
+        (bytes32 ID, uint weight) = _sortitionSumTree.draw(key, randomNumber);
+        return (address(uint(ID)), weight);
     }
 
     function getRandomNumber(uint weight) internal {
@@ -897,14 +898,14 @@ contract BoxTogether is Ownable, PotController {
     }
 
     struct PoolInfo {
-        IBEP20 stakingToken;             // Address of LP token contract.
+        IBEP20 stakingToken;        // Address of LP token contract.
         uint256 lastRewardBlock;    // Last block number that MCRNs distribution occurs.
         uint256 accTicketPerShare;  // Accumulated MCRNs per share, times 1e12. See below.
         address masterChef;         // MasterChef or SmartChef/ChocoChef for Strategy
         uint256 pid;                // MasterChef pool Id
         bool isMaster;              // MasterChef or SmartChef
         address syrup;              // If Chef is MasterChef and pid = 0, need to know syrup token
-        IBEP20 rewardToken;        // Need to know reward token for use reward distribution
+        IBEP20 rewardToken;         // Need to know reward token for use reward distribution
     }
 
     // Pot Info for pot history
@@ -913,11 +914,12 @@ contract BoxTogether is Ownable, PotController {
         uint256 startBlock;         // Pot start block
         uint256 endBlock;           // Pot end block, no more tickets will be distributed after endBlock
         uint256 totalDeposits;      // Total deposited amount when pot closing
-        uint256 date;
+        uint256 date;               // Pot rewards distribute time
         address[] winners;          // Pot winner accounts
-        uint256[] winnerTickets;
-        uint256 rewardPerUser;
-        uint256 totalRewards;
+        uint256[] winnerTickets;    // Winner ticket count
+        uint256 rewardPerUser;      // totalRewards/winners.length
+        uint256 totalRewards;       // Total distributed rewards
+        uint256 totalTicket;        // Total ticket count in this pot
     }
 
     mapping (uint256 => PotInfo) private _histories;
@@ -1419,11 +1421,11 @@ contract BoxTogether is Ownable, PotController {
         history.winnerTickets = new uint256[](winnerCount);
         history.rewardPerUser = rewardPerUser;
         history.totalRewards = totalRewards;
+        history.totalTicket = _totalTicket;
 
         for (uint i = 0; i < winnerCount; i++) {
             uint rn = uint256(keccak256(abi.encode(_randomness, i))).mod(_totalTicket);
-            address selected = draw(_getTreeKey(), rn);
-            bytes32 accountID = bytes32(uint256(selected));
+            (address selected, uint weight) = draw(_getTreeKey(), rn);
             UserInfo storage user = userInfo[selected];
             
             if(_isSameRewardWithStakingToken()) {
@@ -1435,7 +1437,7 @@ contract BoxTogether is Ownable, PotController {
             }
             
             history.winners[i] = selected;
-            history.winnerTickets[i] = getWeight(_getTreeKey(), accountID);
+            history.winnerTickets[i] = weight;
         }
 
         _histories[potId] = history;
@@ -1460,5 +1462,7 @@ contract BoxTogether is Ownable, PotController {
 
         _treeKey = bytes32(potId);
         createTree(_getTreeKey());
+
+        strategyDeposit(poolInfo, 0);
     }
 }
