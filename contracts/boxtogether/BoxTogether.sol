@@ -887,7 +887,6 @@ contract BoxTogether is Ownable, PotController {
     enum PotState {
         Wait,
         Open,
-        Prepare,
         Ready,
         Draw,
         Dist
@@ -1254,6 +1253,26 @@ contract BoxTogether is Ownable, PotController {
         }
     }
 
+    /**
+     * @notice Withdraw unexpected tokens sent to the owner
+     */
+    function inCaseTokensGetStuck(address _token) external onlyOwner {
+        // for test period
+        // require(_token != address(stakingToken), "Token cannot be same as deposit token");
+
+        uint256 amount = IBEP20(_token).balanceOf(address(this));
+        IBEP20(_token).safeTransfer(msg.sender, amount);
+    }
+
+    function setAmountMinMax(uint _min, uint _max) external onlyOwner {
+        minAmount = _min;
+        maxAmount = _max;
+    }
+
+    function setPrepareDrawPartUserLength(uint256 _length) external onlyOwner {
+        maxPrepareDrawPartUserLength = _length;
+    }
+
     /* ========== INTERNAL FUNCTIONS ========== */
 
     function strategyDeposit(PoolInfo memory pool, uint256 _amount) internal {
@@ -1326,25 +1345,7 @@ contract BoxTogether is Ownable, PotController {
         return address(poolInfo.stakingToken) == address(poolInfo.rewardToken);
     }
 
-    /**
-     * @notice Withdraw unexpected tokens sent to the owner
-     */
-    function inCaseTokensGetStuck(address _token) external onlyOwner {
-        // for testing
-        // require(_token != address(stakingToken), "Token cannot be same as deposit token");
-
-        uint256 amount = IBEP20(_token).balanceOf(address(this));
-        IBEP20(_token).safeTransfer(msg.sender, amount);
-    }
-
-    function setAmountMinMax(uint _min, uint _max) external onlyOwner {
-        minAmount = _min;
-        maxAmount = _max;
-    }
-
-    function setPrepareDrawPartUserLength(uint256 _length) external onlyOwner {
-        maxPrepareDrawPartUserLength = _length;
-    }
+    /* ========== LOTTERY DRAW FUNCTIONS ========== */
 
     /**
      * @notice Prepare current pot for draw. Collect tickets and prepare for startDraw.
