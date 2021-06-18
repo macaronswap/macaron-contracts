@@ -965,6 +965,7 @@ contract BoxTogether is Ownable, PotController {
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 amount);
+    event DrawRewardsDistributed(uint potId, address[] winners);
 
     constructor(
         IBEP20 _stakingToken,
@@ -1348,7 +1349,7 @@ contract BoxTogether is Ownable, PotController {
     /**
      * @notice Prepare current pot for draw. Collect tickets and prepare for startDraw.
      */
-    function preparePotForDrawPartially() external onlyPotManager onlyValidState(PotState.Open) {
+    function preparePotForDraw() external onlyPotManager onlyValidState(PotState.Open) {
         require(block.number > endBlock, "Pot end time waiting!");
         require(users.length > 0, "There is no user for draw!");
 
@@ -1404,68 +1405,15 @@ contract BoxTogether is Ownable, PotController {
 
             // For clear pending tickets
             poolInfo.accTicketPerShare = 0;
+
+            _startDraw();
         }
-    }
-
-    /**
-     * @notice Prepare current pot for draw. Collect tickets and prepare for startDraw.
-     */
-    function preparePotForDraw() external onlyPotManager onlyValidState(PotState.Open) {
-        require(block.number > endBlock, "Pot end time waiting!");
-        require(users.length > 0, "There is no user for draw!");
-        require(users.length < maxPrepareDrawPartUserLength, "Use partially prepare method to avoid gaslimit!");
-
-        currentPotState = PotState.Ready;
-        
-        // Determining user weights and setting for draw
-        updatePool();
-        for (uint256 index = 0; index < users.length; index++) {
-            address account = users[index];
-            // Harvest Tickets
-            UserInfo storage user = userInfo[account];
-            if (user.amount > 0) {
-                uint256 pending = user.amount.mul(poolInfo.accTicketPerShare).div(1e12).sub(user.rewardDebt);
-                if(pending > 0) {
-                    user.unusedTickets = user.unusedTickets.add(pending);
-                }
-            }
-
-            bytes32 accountID = bytes32(uint256(account));
-            uint256 weight = user.unusedTickets;
-            _totalTicket = _totalTicket.add(weight);
-
-            setWeight(_getTreeKey(), weight, accountID);
-
-            user.rewardDebt = 0;
-            user.unusedTickets = 0;
-            
-            if(user.amount == 0) {
-                // Delete user for next time
-                _usersWillDelete.push(index);
-            }
-        }
-
-        // Delete unnecessary users (This can be done with different method for not caught gaslimit)
-        if(_usersWillDelete.length > 0) {
-            do {
-                uint256 index = _usersWillDelete[_usersWillDelete.length-1];
-                delete isParticipant[users[index]];
-                users[index] = users[users.length - 1];
-                users.pop();
-    
-                _usersWillDelete.pop();
-            }
-            while(_usersWillDelete.length > 0);
-        }
-
-        // For clear pending tickets
-        poolInfo.accTicketPerShare = 0;
     }
 
     /**
      * @notice Start current pot draw
      */
-    function startDraw() external onlyPotManager onlyValidState(PotState.Ready)  {
+    function _startDraw() internal onlyValidState(PotState.Ready)  {
         currentPotState = PotState.Draw;
         getRandomNumber(_totalTicket);
     }
@@ -1491,7 +1439,7 @@ contract BoxTogether is Ownable, PotController {
             }
             poolInfo.rewardToken.safeTransfer(feeTreasury, fee);
         }
-
+        
         uint256 rewardPerUser = totalRewards.div(winnerCount);
 
         PotInfo memory history;
@@ -1504,12 +1452,11 @@ contract BoxTogether is Ownable, PotController {
         history.rewardPerUser = rewardPerUser;
         history.totalRewards = totalRewards;
         history.totalTicket = _totalTicket;
-
+        
         for (uint i = 0; i < winnerCount; i++) {
             uint rn = uint256(keccak256(abi.encode(_randomness, i))).mod(_totalTicket);
             (address selected, uint weight) = draw(_getTreeKey(), rn);
             UserInfo storage user = userInfo[selected];
-            
             if(_isSameRewardWithStakingToken()) {
                 user.amount = user.amount.add(rewardPerUser);
                 totalDeposits = totalDeposits.add(rewardPerUser);
@@ -1517,12 +1464,12 @@ contract BoxTogether is Ownable, PotController {
             else {
                 poolInfo.rewardToken.safeTransfer(selected, rewardPerUser);
             }
-            
             history.winners[i] = selected;
             history.winnerTickets[i] = weight;
         }
-
         _histories[potId] = history;
+
+        emit DrawRewardsDistributed(potId, history.winners);
     }
 
     /**
