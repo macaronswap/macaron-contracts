@@ -1425,19 +1425,22 @@ contract BoxTogether is Ownable, PotController {
     function distributeDrawRewards() external onlyPotManager onlyValidState(PotState.Draw)  {
         currentPotState = PotState.Dist;
 
-        uint256 winnerCount = Math.min(WINNER_COUNT, users.length);
+        uint256 winnerCount = WINNER_COUNT;
+        if(users.length > 0) {
+            winnerCount = Math.min(WINNER_COUNT, users.length);
+        }
         uint256 totalRewards = balanceOfRewards();
 
         uint256 fee = totalRewards.mul(feeRatio).div(100);
         totalRewards = totalRewards.sub(fee);
 
         if (fee > 0) {
+            _harvestPendingRewards();
+
             if(_isSameRewardWithStakingToken()) {
                 _strategyWithdraw(poolInfo, fee);
             }
-            else {
-                _harvestPendingRewards();
-            }
+            
             poolInfo.rewardToken.safeTransfer(feeTreasury, fee);
         }
         
