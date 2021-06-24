@@ -1391,19 +1391,6 @@ contract BoxTogether is Ownable, PotController {
         }
 
         if(endIndex == users.length) {
-            // Delete unnecessary users (This can be done with different method for not caught gaslimit)
-            if(_usersWillDelete.length > 0) {
-                do {
-                    uint256 index = _usersWillDelete[_usersWillDelete.length-1];
-                    delete isParticipant[users[index]];
-                    users[index] = users[users.length - 1];
-                    users.pop();
-        
-                    _usersWillDelete.pop();
-                }
-                while(_usersWillDelete.length > 0);
-            }
-
             // For clear pending tickets
             poolInfo.accTicketPerShare = 0;
 
@@ -1486,6 +1473,19 @@ contract BoxTogether is Ownable, PotController {
         potId = potId + 1;
         poolInfo.accTicketPerShare = 0;
         poolInfo.lastRewardBlock = block.number;
+
+        // Delete unnecessary users (This can be done with different method for not caught gaslimit)
+        if(_usersWillDelete.length > 0) {
+            do {
+                uint256 index = _usersWillDelete[_usersWillDelete.length-1];
+                delete isParticipant[users[index]];
+                users[index] = users[users.length - 1];
+                users.pop();
+    
+                _usersWillDelete.pop();
+            }
+            while(_usersWillDelete.length > 0);
+        }
 
         _treeKey = bytes32(potId);
         createTree(_getTreeKey());
