@@ -836,7 +836,7 @@ contract PotController is IPotController {
     SortitionSumTreeFactory.SortitionSumTrees private _sortitionSumTree;
     bytes32 private _requestId;  // random number
 
-    uint internal _randomness;
+    mapping(uint => uint) _randomness;  // (potId => ramdomNumber)
     uint public potId;
 
     /* ========== MODIFIERS ========== */
@@ -873,7 +873,7 @@ contract PotController is IPotController {
 
     function numbersDrawn(uint _potId, bytes32 requestId, uint randomness) override external onlyRandomGenerator {
         if (_requestId == requestId && potId == _potId) {
-            _randomness = randomness;
+            _randomness[_potId] = randomness;
         }
     }
 }
@@ -1117,6 +1117,19 @@ contract BoxTogether is Ownable, PotController {
     function getWeight(address _account) public view returns (uint256) {
         bytes32 accountID = bytes32(uint256(_account));
         return getWeight(_getTreeKey(), accountID);
+    }
+    
+    //todo: delete
+    function getRandomness(uint _potId) public view returns (uint) {
+        return _randomness[_potId];
+    }
+    //todo: delete
+    function getRandomness() public view returns (uint) {
+        return _randomness[potId];
+    }
+    
+    function getLastWinners() public view returns (address[] memory) {
+        return _histories[potId-1].winners;
     }
 
     /* ========== EXTERNAL & PUBLIC FUNCTIONS ========== */
@@ -1409,7 +1422,9 @@ contract BoxTogether is Ownable, PotController {
     /**
      * @notice Distribute rewards to winners
      */
-    function distributeDrawRewards() external onlyPotManager onlyValidState(PotState.Draw)  {
+    function distributeDrawRewards(bool _openNow) external onlyPotManager onlyValidState(PotState.Draw)  {
+        require(_randomness[potId] > 0, "Random number waiting from oracle!");
+
         currentPotState = PotState.Dist;
 
         uint256 winnerCount = WINNER_COUNT;
@@ -1445,7 +1460,7 @@ contract BoxTogether is Ownable, PotController {
         history.totalTicket = _totalTicket;
         
         for (uint i = 0; i < winnerCount; i++) {
-            uint rn = uint256(keccak256(abi.encode(_randomness, i))).mod(_totalTicket);
+            uint rn = uint256(keccak256(abi.encode(_randomness[potId], i))).mod(_totalTicket);
             (address selected, uint weight) = draw(_getTreeKey(), rn);
             UserInfo storage user = userInfo[selected];
             if(_isSameRewardWithStakingToken()) {
@@ -1461,12 +1476,17 @@ contract BoxTogether is Ownable, PotController {
         _histories[potId] = history;
 
         emit DrawRewardsDistributed(potId, history.winners);
+
+        // Open new pot after distribute
+        if(_openNow) {
+            openNewPot();
+        }
     }
 
     /**
      * @notice Open new pot
      */
-    function openNewPot() external onlyPotManager onlyValidState(PotState.Dist)  {
+    function openNewPot() public onlyPotManager onlyValidState(PotState.Dist)  {
         currentPotState = PotState.Open;
         startBlock = block.number;
         endBlock = block.number.add(potBlockHeight);
