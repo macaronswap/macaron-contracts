@@ -941,7 +941,6 @@ contract BoxTogether is Ownable, PotController {
 
     address[] users;                        // Pot participants
     uint256 public WINNER_COUNT = 1;
-    PotState public currentPotState;
     
     uint256 public startBlock;          // The block number when pot starts.
     uint256 public endBlock;            // The block number when pot ends.
@@ -958,6 +957,7 @@ contract BoxTogether is Ownable, PotController {
     uint256[] private _usersWillDelete;
     bytes32 private _treeKey;
     uint256 private _totalTicket;
+    PotState private _currentPotState;
     
     /* ========== EVENTS ========== */
 
@@ -983,7 +983,7 @@ contract BoxTogether is Ownable, PotController {
         stakingToken = _stakingToken;
         ticketPerBlock = _ticketPerBlock;
         potId = 1;
-        currentPotState = PotState.Open;
+        _currentPotState = PotState.Open;
         startBlock = _startBlock;
         potBlockHeight = _potBlockHeight;
         endBlock = _startBlock.add(_potBlockHeight);
@@ -1043,7 +1043,7 @@ contract BoxTogether is Ownable, PotController {
         if(endBlock > block.number) {
             return PotState.Open;
         }
-        return currentPotState;
+        return _currentPotState;
     }
 
     // Return reward multiplier over the given _from to _to block.
@@ -1286,6 +1286,11 @@ contract BoxTogether is Ownable, PotController {
         maxPrepareDrawPartUserLength = _length;
     }
 
+    // EMERGENCY ONLY. If tokens stuck  when potstate not in Open, Use this for emergency withdraw activate.
+    function setCurrentPotState(uint _potState) external onlyOwner {
+        _currentPotState = _potState;
+    }
+
     /* ========== INTERNAL FUNCTIONS ========== */
 
     function strategyDeposit(PoolInfo memory pool, uint256 _amount) internal {
@@ -1371,7 +1376,7 @@ contract BoxTogether is Ownable, PotController {
         uint256 endIndex = Math.min(maxPrepareDrawPartUserLength.add(startIndex), users.length);
         prepareDrawPart = prepareDrawPart + 1;
         if(endIndex == users.length) {
-            currentPotState = PotState.Ready;
+            _currentPotState = PotState.Ready;
             prepareDrawPart = 0;
         }
 
@@ -1415,7 +1420,7 @@ contract BoxTogether is Ownable, PotController {
      * @notice Start current pot draw
      */
     function _startDraw() internal onlyValidState(PotState.Ready)  {
-        currentPotState = PotState.Draw;
+        _currentPotState = PotState.Draw;
         getRandomNumber(_totalTicket);
     }
 
@@ -1425,7 +1430,7 @@ contract BoxTogether is Ownable, PotController {
     function distributeDrawRewards(bool _openNow) external onlyPotManager onlyValidState(PotState.Draw)  {
         require(_randomness[potId] > 0, "Random number waiting from oracle!");
 
-        currentPotState = PotState.Dist;
+        _currentPotState = PotState.Dist;
 
         uint256 winnerCount = WINNER_COUNT;
         if(users.length > 0) {
@@ -1487,7 +1492,7 @@ contract BoxTogether is Ownable, PotController {
      * @notice Open new pot
      */
     function openNewPot() public onlyPotManager onlyValidState(PotState.Dist)  {
-        currentPotState = PotState.Open;
+        _currentPotState = PotState.Open;
         startBlock = block.number;
         endBlock = block.number.add(potBlockHeight);
         potId = potId + 1;
