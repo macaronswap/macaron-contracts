@@ -1043,6 +1043,9 @@ contract BoxTogether is Ownable, PotController {
         if(endBlock > block.number) {
             return PotState.Open;
         }
+        if(_currentPotState == PotState.Ready && getRandomness() > 0) {
+            return PotState.Draw;
+        }
         return _currentPotState;
     }
 
@@ -1123,7 +1126,7 @@ contract BoxTogether is Ownable, PotController {
     function getRandomness(uint _potId) public view returns (uint) {
         return _randomness[_potId];
     }
-    //todo: delete
+    
     function getRandomness() public view returns (uint) {
         return _randomness[potId];
     }
@@ -1287,7 +1290,7 @@ contract BoxTogether is Ownable, PotController {
     }
 
     // EMERGENCY ONLY. If tokens stuck  when potstate not in Open, Use this for emergency withdraw activate.
-    function setCurrentPotState(uint _potState) external onlyOwner {
+    function setCurrentPotState(PotState _potState) external onlyOwner {
         _currentPotState = _potState;
     }
 
@@ -1412,16 +1415,8 @@ contract BoxTogether is Ownable, PotController {
             // For clear pending tickets
             poolInfo.accTicketPerShare = 0;
 
-            _startDraw();
+            getRandomNumber(_totalTicket);
         }
-    }
-
-    /**
-     * @notice Start current pot draw
-     */
-    function _startDraw() internal onlyValidState(PotState.Ready)  {
-        _currentPotState = PotState.Draw;
-        getRandomNumber(_totalTicket);
     }
 
     /**
