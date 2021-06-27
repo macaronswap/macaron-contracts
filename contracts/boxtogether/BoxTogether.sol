@@ -929,7 +929,6 @@ contract BoxTogether is Ownable, PotController {
     // important addresses
     address deployer;
     address feeTreasury;
-    address potManager;
 
     IBEP20 public stakingToken;    
     uint256 public ticketPerBlock;
@@ -942,13 +941,14 @@ contract BoxTogether is Ownable, PotController {
     address[] users;                        // Pot participants
     uint256 public WINNER_COUNT = 1;
     
-    uint256 public startBlock;          // The block number when pot starts.
-    uint256 public endBlock;            // The block number when pot ends.
-    uint256 public potBlockHeight;      // Pot Block height for pot period
-    uint256 public totalDeposits = 0;   // Total deposits for default pool
+    uint256 public startBlock;              // The block number when pot starts.
+    uint256 public endBlock;                // The block number when pot ends.
+    uint256 public potBlockHeight;          // Pot Block height for pot period
+    uint256 public totalDeposits = 0;       // Total deposits for default pool
     uint256 public minAmount;
     uint256 public maxAmount;
-    uint public feeRatio;
+    uint256 public feeRatio = 2000;              // Burn fee :20%
+    uint256 public distributorRewardRatio = 100; // Dist. & Prepare methods caller reward, cut from burn fee :1%
 
     uint256 maxPrepareDrawPartUserLength = 200;
     uint256 prepareDrawPart = 0;
@@ -958,6 +958,7 @@ contract BoxTogether is Ownable, PotController {
     bytes32 private _treeKey;
     uint256 private _totalTicket;
     PotState private _currentPotState;
+    address[] private _callers;
     
     /* ========== EVENTS ========== */
 
@@ -989,7 +990,6 @@ contract BoxTogether is Ownable, PotController {
         endBlock = _startBlock.add(_potBlockHeight);
         minAmount = _minAmount;
         maxAmount = _maxAmount;
-        feeRatio = 20;
 
         // staking pool
         poolInfo = PoolInfo({
@@ -1004,7 +1004,6 @@ contract BoxTogether is Ownable, PotController {
         });
 
         deployer = msg.sender;
-        potManager = msg.sender;
         feeTreasury = _feeTreasury;
         
         require(_masterChef != address(0), "_masterChef can't be 0x");
@@ -1021,13 +1020,17 @@ contract BoxTogether is Ownable, PotController {
 
     /* ========== MODIFIERS ========== */
 
-    modifier onlyPotManager() {
-        require(msg.sender == potManager, "!manager");
+    modifier onlyValidState(PotState _state) {
+        require(getPotState() == _state, "Invalid pot state");
         _;
     }
 
-    modifier onlyValidState(PotState _state) {
-        require(getPotState() == _state, "Invalid pot state");
+    /**
+     * @notice Checks if the msg.sender is a contract or a proxy
+     */
+    modifier notContract() {
+        require(!_isContract(msg.sender), "contract not allowed");
+        require(msg.sender == tx.origin, "proxy contract not allowed");
         _;
     }
 
@@ -1135,11 +1138,23 @@ contract BoxTogether is Ownable, PotController {
         return _histories[potId-1].winners;
     }
 
+    /**
+     * @notice Checks if address is a contract
+     * @dev It prevents contract from being targetted
+     */
+    function _isContract(address addr) internal view returns (bool) {
+        uint256 size;
+        assembly {
+            size := extcodesize(addr)
+        }
+        return size > 0;
+    }
+
     /* ========== EXTERNAL & PUBLIC FUNCTIONS ========== */
 
-    function setPotManager(address _potManager) external onlyOwner {
-        require(_potManager != address(0), "_potManager can't be 0x");
-        potManager = _potManager;
+    function setDistributorRewardRatio(uint256 _ratio) external onlyOwner {
+        require(_ratio < feeRatio, "Invalid fee range: Reward ratio must be smaller than feeRatio");
+        distributorRewardRatio = _ratio;
     }
 
     function setFeeTreasury(address _feeTreasury) external onlyOwner {
@@ -1161,6 +1176,7 @@ contract BoxTogether is Ownable, PotController {
 
     function setFeeRatio(uint256 _feeRatio) external onlyOwner {
         require(_feeRatio <= 100, "Invalid fee range");
+        require(_feeRatio > distributorRewardRatio, "Invalid fee range: Fee ratio must be bigger than distributorRewardRatio");
         feeRatio = _feeRatio;
     }
 
@@ -1184,7 +1200,7 @@ contract BoxTogether is Ownable, PotController {
     }
 
     // Stake STAKING tokens to BoxTogether
-    function deposit(uint256 _amount) external onlyValidState(PotState.Open) {
+    function deposit(uint256 _amount) external onlyValidState(PotState.Open) notContract {
         PoolInfo storage pool = poolInfo;
         UserInfo storage user = userInfo[msg.sender];
 
@@ -1217,7 +1233,7 @@ contract BoxTogether is Ownable, PotController {
     }
 
     // Withdraw STAKING tokens from BoxTogether.
-    function withdraw(uint256 _amount) external onlyValidState(PotState.Open) {
+    function withdraw(uint256 _amount) external onlyValidState(PotState.Open) notContract {
         PoolInfo storage pool = poolInfo;
         UserInfo storage user = userInfo[msg.sender];
         require(user.amount >= _amount, "withdraw: not good");
@@ -1241,7 +1257,7 @@ contract BoxTogether is Ownable, PotController {
     }
 
     // Withdraw without caring about rewards. EMERGENCY ONLY.
-    function emergencyWithdraw() external onlyValidState(PotState.Open) {
+    function emergencyWithdraw() external onlyValidState(PotState.Open) notContract {
         PoolInfo storage pool = poolInfo;
         UserInfo storage user = userInfo[msg.sender];
         pool.stakingToken.safeTransfer(address(msg.sender), user.amount);
@@ -1371,7 +1387,7 @@ contract BoxTogether is Ownable, PotController {
     /**
      * @notice Prepare current pot for draw. Collect tickets and prepare for startDraw.
      */
-    function preparePotForDraw() external onlyPotManager onlyValidState(PotState.Open) {
+    function preparePotForDraw() external onlyValidState(PotState.Open) notContract {
         require(block.number > endBlock, "Pot end time waiting!");
         require(users.length > 0, "There is no user for draw!");
 
@@ -1417,12 +1433,15 @@ contract BoxTogether is Ownable, PotController {
 
             getRandomNumber(_totalTicket);
         }
+
+        // Collect callers for reward
+        _callers.push(msg.sender);
     }
 
     /**
      * @notice Distribute rewards to winners
      */
-    function distributeDrawRewards(bool _openNow) external onlyPotManager onlyValidState(PotState.Draw)  {
+    function distributeDrawRewards(bool _openNow) external onlyValidState(PotState.Draw) notContract {
         require(_randomness[potId] > 0, "Random number waiting from oracle!");
 
         _currentPotState = PotState.Dist;
@@ -1431,10 +1450,15 @@ contract BoxTogether is Ownable, PotController {
         if(users.length > 0) {
             winnerCount = Math.min(WINNER_COUNT, users.length);
         }
-        uint256 totalRewards = balanceOfRewards();
 
-        uint256 fee = totalRewards.mul(feeRatio).div(100);
+        _callers.push(msg.sender);
+
+        uint256 totalRewards = balanceOfRewards();
+        uint256 callerFee = totalRewards.mul(distributorRewardRatio).div(100).div(100);
+        uint256 fee = totalRewards.mul(feeRatio).div(100).div(100);
         totalRewards = totalRewards.sub(fee);
+
+        require(callerFee < fee, "Caller Fee must be smaller than fee.");
 
         if (fee > 0) {
             _harvestPendingRewards();
@@ -1443,7 +1467,18 @@ contract BoxTogether is Ownable, PotController {
                 _strategyWithdraw(poolInfo, fee);
             }
             
-            poolInfo.rewardToken.safeTransfer(feeTreasury, fee);
+            // Send to burn treasury rest of fee
+            poolInfo.rewardToken.safeTransfer(feeTreasury, fee.sub(callerFee));
+            
+            // Send caller fee to callers
+            uint256 feePerCaller = callerFee.div(_callers.length);
+
+            do {
+                address caller = _callers[_callers.length-1];                
+                poolInfo.rewardToken.safeTransfer(caller, feePerCaller);    
+                _callers.pop();
+            }
+            while(_callers.length > 0);
         }
         
         uint256 rewardPerUser = totalRewards.div(winnerCount);
@@ -1479,14 +1514,19 @@ contract BoxTogether is Ownable, PotController {
 
         // Open new pot after distribute
         if(_openNow) {
-            openNewPot();
+            _openNewPot();
         }
+    }
+
+    // For stuck cases
+    function openNewPot() external onlyOwner {
+        _openNewPot();
     }
 
     /**
      * @notice Open new pot
      */
-    function openNewPot() public onlyPotManager onlyValidState(PotState.Dist)  {
+    function _openNewPot() private onlyValidState(PotState.Dist)  {
         _currentPotState = PotState.Open;
         startBlock = block.number;
         endBlock = block.number.add(potBlockHeight);
