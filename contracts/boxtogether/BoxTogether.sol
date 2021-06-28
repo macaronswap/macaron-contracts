@@ -820,7 +820,7 @@ interface IPotController {
 }
 
 interface IRNGenerator {
-    function getRandomNumber(uint _potId, uint256 userProvidedSeed) external returns(bytes32 requestId);
+    function getRandomNumber(uint _potId) external returns(bytes32 requestId);
 }
 
 contract PotController is IPotController {
@@ -865,8 +865,8 @@ contract PotController is IPotController {
         return (address(uint(ID)), weight);
     }
 
-    function getRandomNumber(uint weight) internal {
-        _requestId = RNGenerator.getRandomNumber(potId, weight);
+    function getRandomNumber() internal {
+        _requestId = RNGenerator.getRandomNumber(potId);
     }
 
     /* ========== CALLBACK FUNCTIONS ========== */
@@ -1431,7 +1431,7 @@ contract BoxTogether is Ownable, PotController {
             // For clear pending tickets
             poolInfo.accTicketPerShare = 0;
 
-            getRandomNumber(_totalTicket);
+            getRandomNumber();
         }
 
         // Collect callers for reward
