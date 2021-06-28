@@ -829,7 +829,7 @@ contract PotController is IPotController {
     /* ========== CONSTANT ========== */
 
     uint constant private MAX_TREE_LEAVES = 5;
-    IRNGenerator private RNGenerator = IRNGenerator(0xDbc21e4f31843C54cd7FfB09c6B0E34a4BE7533C);
+    IRNGenerator private RNGenerator = IRNGenerator(0x022a45D2649eC65E0654D7c22DC218e69e5BB71B);
 
     /* ========== STATE VARIABLES ========== */
 
