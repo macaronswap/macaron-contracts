@@ -79,6 +79,11 @@ contract RandomNumberGenerator is VRFConsumerBase, Ownable {
         _availablePot[potAddress] = activate;
     }
 
+    // Implement a withdraw function to avoid locking your LINK in the contract
+    function withdrawLink() external onlyOwner {
+        LINK.transfer(msg.sender, LINK.balanceOf(address(this)));
+    }
+
     /* ========== MUTATE FUNCTIONS ========== */
 
     function getRandomNumber(uint potId, uint256 userProvidedSeed) public onlyPot returns (bytes32 requestId) {
@@ -100,6 +105,4 @@ contract RandomNumberGenerator is VRFConsumerBase, Ownable {
 
         delete _requestIds[requestId];
     }
-
-    // function withdrawLink() external {} - Implement a withdraw function to avoid locking your LINK in the contract
 }
