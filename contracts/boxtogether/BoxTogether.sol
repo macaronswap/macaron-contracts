@@ -950,8 +950,8 @@ contract BoxTogether is Ownable, PotController {
     uint256 public feeRatio = 2000;              // Burn fee :20%
     uint256 public distributorRewardRatio = 100; // Dist. & Prepare methods caller reward, cut from burn fee :1%
 
-    uint256 maxPrepareDrawPartUserLength = 200;
-    uint256 prepareDrawPart = 0;
+    uint256 public maxPrepareDrawPartUserLength = 200;
+    uint256 public prepareDrawPart = 0;
 
     // private vars
     uint256[] private _usersWillDelete;
