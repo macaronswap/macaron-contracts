@@ -169,17 +169,22 @@ contract MacaronSwapMultiSenderv2 is Ownable {
     using SafeMath for uint;
 
     IBEP20 public macaronToken;
-    address public receiverAddress;
+    address public treasuryAddress;
     uint public txFee = 1 ether;
+    uint public txFeeForToken = 0.1 ether;
     uint public minHodlAmount = 100 ether;
 
+    uint public maxToCountForBNB = 1000;
+    uint public maxToCountForToken = 1000;
+
+    event LogBNBBulkSent(uint256 total);
     event LogTokenBulkSent(address token, uint256 total);
 
     constructor (
         IBEP20 _macaronToken
     ) public {
         macaronToken = _macaronToken;
-        receiverAddress = msg.sender;
+        treasuryAddress = msg.sender;
     }
 
     /* ========== MODIFIERS ========== */
@@ -194,98 +199,114 @@ contract MacaronSwapMultiSenderv2 is Ownable {
      */
     function inCaseTokensGetStuck(address _token) external onlyOwner {
         uint256 amount = IBEP20(_token).balanceOf(address(this));
-        IBEP20(_token).safeTransfer(msg.sender, amount);
+        IBEP20(_token).transfer(msg.sender, amount);
     }
 
-    function setReceiverAddress(address _addr) external onlyOwner {
+    function setTreasuryAddress(address _addr) external onlyOwner {
         require(_addr != address(0));
-        receiverAddress = _addr;
+        treasuryAddress = _addr;
     }
 
-    function setTxFee(uint _fee) onlyOwner public {
-        txFee = _fee;
+    function setTxFee(uint _feeAsBNB) onlyOwner public {
+        txFee = _feeAsBNB;
+    }
+    
+    function setTxFeeForToken(uint _feeAsMacaron) onlyOwner public {
+        txFeeForToken = _feeAsMacaron;
+    }
+    
+    function setMaxToCountForBNB(uint _count) onlyOwner public {
+        maxToCountForBNB = _count;
+    }
+    
+    function setMaxToCountForToken(uint _count) onlyOwner public {
+        maxToCountForToken = _count;
     }
 
     function ethSendSameValue(address[] _to, uint _value) external payable onlyHodler {
 
-        uint sendAmount = _to.length.sub(1).mul(_value);
+        uint sendAmount = _to.length.mul(_value);
         uint remainingValue = msg.value;
 
-        bool vip = isVIP(msg.sender);
-        if (vip) {
-            require(remainingValue >= sendAmount);
-        } else {
-            require(remainingValue >= sendAmount.add(txFee));
-        }
-        require(_to.length <= 255);
+        require(remainingValue >= sendAmount.add(txFee), "insufficient amount!");
+        require(_to.length <= maxToCountForBNB, "number of to addresses larger than expected");
+
+        require(treasuryAddress.send(txFee));
 
         for (uint8 i = 0; i < _to.length; i++) {
             remainingValue = remainingValue.sub(_value);
             require(_to[i].send(_value));
         }
 
-        emit LogTokenBulkSent(0x000000000000000000000000000000000000bEEF, msg.value);
+        emit LogBNBBulkSent(msg.value);
     }
 
-    function ethSendDifferentValue(address[] _to, uint[] _value) internal {
-
-        uint sendAmount = _value[0];
+    function ethSendDifferentValue(address[] _to, uint[] _value) external payable onlyHodler {
+        
         uint remainingValue = msg.value;
-
-        bool vip = isVIP(msg.sender);
-        if (vip) {
-            require(remainingValue >= sendAmount);
-        } else {
-            require(remainingValue >= sendAmount.add(txFee));
+        uint sendAmount = 0;
+        for(uint i = 0; i < _to.length; i++) {
+         sendAmount = sendAmount.add(_value[i]);
         }
 
-        require(_to.length == _value.length);
-        require(_to.length <= 255);
+        require(remainingValue >= sendAmount.add(txFee), "insufficient amount!");
+        require(_to.length <= maxToCountForBNB, "number of to addresses larger than expected");
+        require(_to.length == _value.length, "_to and _value counts not equal!");
 
-        for (uint8 i = 0; i < _to.length; i++) {
-            remainingValue = remainingValue.sub(_value[i]);
-            require(_to[i].send(_value[i]));
+        require(treasuryAddress.send(txFee));
+
+        for (uint j = 0; j < _to.length; j++) {
+            remainingValue = remainingValue.sub(_value[j]);
+            require(_to[j].send(_value[j]));
         }
-        emit LogTokenBulkSent(0x000000000000000000000000000000000000bEEF, msg.value);
+        emit LogBNBBulkSent(msg.value);
 
     }
 
-    function tokenSendSameValue(address _tokenAddress, address[] _to, uint _value) internal {
+    function tokenSendSameValue(address _tokenAddress, address[] _to, uint _value) external onlyHodler {
 
-        uint sendValue = msg.value;
-        bool vip = isVIP(msg.sender);
-        if (!vip) {
-            require(sendValue >= txFee);
-        }
-        require(_to.length <= 255);
+        require(_to.length <= maxToCountForToken, "number of to addresses larger than expected");
 
-        address from = msg.sender;
-        uint256 sendAmount = _to.length.sub(1).mul(_value);
+        uint256 sendAmount = _to.length.mul(_value);
 
-        StandardToken token = StandardToken(_tokenAddress);
-        for (uint8 i = 0; i < _to.length; i++) {
-            token.transferFrom(from, _to[i], _value);
+        IBEP20 token = IBEP20(_tokenAddress);
+        
+        if(token == macaronToken)
+            require(token.balanceOf(msg.sender) >= sendAmount.add(txFeeForToken), "insufficient amount");
+        else
+            require(token.balanceOf(msg.sender) >= sendAmount, "insufficient amount");
+            
+        macaronToken.transferFrom(msg.sender, treasuryAddress, txFeeForToken);
+        
+        for (uint i = 0; i < _to.length; i++) {
+            token.transferFrom(msg.sender, _to[i], _value);
         }
 
         emit LogTokenBulkSent(_tokenAddress, sendAmount);
 
     }
 
-    function tokenSendDifferentValue(address _tokenAddress, address[] _to, uint[] _value) internal {
-        uint sendValue = msg.value;
-        bool vip = isVIP(msg.sender);
-        if (!vip) {
-            require(sendValue >= txFee);
-        }
-
+    function tokenSendDifferentValue(address _tokenAddress, address[] _to, uint[] _value) external onlyHodler {
+        
         require(_to.length == _value.length);
-        require(_to.length <= 255);
+        require(_to.length <= maxToCountForToken, "number of to addresses larger than expected");
 
-        StandardToken token = StandardToken(_tokenAddress);
-
-        for (uint8 i = 0; i < _to.length; i++) {
-            token.transferFrom(msg.sender, _to[i], _value[i]);
-            emit LogTokenBulkSent(_tokenAddress, _value[i]);
+        uint sendAmount = 0;
+        for(uint i = 0; i < _to.length; i++) {
+         sendAmount = sendAmount.add(_value[i]);
         }
+        
+        IBEP20 token = IBEP20(_tokenAddress);
+
+        if(token == macaronToken)
+            require(token.balanceOf(msg.sender) >= sendAmount.add(txFeeForToken), "insufficient amount");
+        else
+            require(token.balanceOf(msg.sender) >= sendAmount, "insufficient amount");
+            
+        for (uint j = 0; j < _to.length; j++) {
+            token.transferFrom(msg.sender, _to[j], _value[j]);
+        }
+        
+        emit LogTokenBulkSent(_tokenAddress, sendAmount);
     }
 }
