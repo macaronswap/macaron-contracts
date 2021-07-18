@@ -190,7 +190,7 @@ contract MacaronSwapMultiSenderv2 is Ownable {
     /* ========== MODIFIERS ========== */
 
     modifier onlyHodler() {
-        require(macaronToken.balanceOf(msg.sender) > minHodlAmount, "Macaron amount under required Min HODL!");
+        require(macaronToken.balanceOf(msg.sender) >= minHodlAmount, "Macaron amount under required Min HODL!");
         _;
     }
     
@@ -201,39 +201,43 @@ contract MacaronSwapMultiSenderv2 is Ownable {
         uint256 amount = IBEP20(_token).balanceOf(address(this));
         IBEP20(_token).transfer(msg.sender, amount);
     }
+    
+    /* ========== SETTER METHODS ========== */
 
     function setTreasuryAddress(address _addr) external onlyOwner {
         require(_addr != address(0));
         treasuryAddress = _addr;
     }
 
-    function setTxFee(uint _feeAsBNB) onlyOwner public {
+    function setTxFee(uint _feeAsBNB) external onlyOwner {
         txFee = _feeAsBNB;
     }
     
-    function setTxFeeForToken(uint _feeAsMacaron) onlyOwner public {
+    function setTxFeeForToken(uint _feeAsMacaron) external onlyOwner {
         txFeeForToken = _feeAsMacaron;
     }
     
-    function setMaxToCountForBNB(uint _count) onlyOwner public {
+    function setMaxToCountForBNB(uint _count) external onlyOwner {
         maxToCountForBNB = _count;
     }
     
-    function setMaxToCountForToken(uint _count) onlyOwner public {
+    function setMaxToCountForToken(uint _count) external onlyOwner {
         maxToCountForToken = _count;
     }
+    
+    /* ========== EXTERNAL METHODS ========== */
 
-    function ethSendSameValue(address[] _to, uint _value) external payable onlyHodler {
+    function ethSendSameValue(address[] _to, uint256 _value) external payable onlyHodler {
 
-        uint sendAmount = _to.length.mul(_value);
-        uint remainingValue = msg.value;
+        uint256 sendAmount = _to.length.mul(_value);
+        uint256 remainingValue = msg.value;
 
         require(remainingValue >= sendAmount.add(txFee), "insufficient amount!");
         require(_to.length <= maxToCountForBNB, "number of to addresses larger than expected");
 
         require(treasuryAddress.send(txFee));
 
-        for (uint8 i = 0; i < _to.length; i++) {
+        for (uint256 i = 0; i < _to.length; i++) {
             remainingValue = remainingValue.sub(_value);
             require(_to[i].send(_value));
         }
@@ -241,11 +245,11 @@ contract MacaronSwapMultiSenderv2 is Ownable {
         emit LogBNBBulkSent(msg.value);
     }
 
-    function ethSendDifferentValue(address[] _to, uint[] _value) external payable onlyHodler {
+    function ethSendDifferentValue(address[] _to, uint256[] _value) external payable onlyHodler {
         
-        uint remainingValue = msg.value;
-        uint sendAmount = 0;
-        for(uint i = 0; i < _to.length; i++) {
+        uint256 remainingValue = msg.value;
+        uint256 sendAmount = 0;
+        for(uint256 i = 0; i < _to.length; i++) {
          sendAmount = sendAmount.add(_value[i]);
         }
 
@@ -255,7 +259,7 @@ contract MacaronSwapMultiSenderv2 is Ownable {
 
         require(treasuryAddress.send(txFee));
 
-        for (uint j = 0; j < _to.length; j++) {
+        for (uint256 j = 0; j < _to.length; j++) {
             remainingValue = remainingValue.sub(_value[j]);
             require(_to[j].send(_value[j]));
         }
@@ -263,7 +267,7 @@ contract MacaronSwapMultiSenderv2 is Ownable {
 
     }
 
-    function tokenSendSameValue(address _tokenAddress, address[] _to, uint _value) external onlyHodler {
+    function tokenSendSameValue(address _tokenAddress, address[] _to, uint256 _value) external onlyHodler {
 
         require(_to.length <= maxToCountForToken, "number of to addresses larger than expected");
 
@@ -278,7 +282,7 @@ contract MacaronSwapMultiSenderv2 is Ownable {
             
         macaronToken.transferFrom(msg.sender, treasuryAddress, txFeeForToken);
         
-        for (uint i = 0; i < _to.length; i++) {
+        for (uint256 i = 0; i < _to.length; i++) {
             token.transferFrom(msg.sender, _to[i], _value);
         }
 
@@ -286,13 +290,13 @@ contract MacaronSwapMultiSenderv2 is Ownable {
 
     }
 
-    function tokenSendDifferentValue(address _tokenAddress, address[] _to, uint[] _value) external onlyHodler {
+    function tokenSendDifferentValue(address _tokenAddress, address[] _to, uint256[] _value) external onlyHodler {
         
         require(_to.length == _value.length);
         require(_to.length <= maxToCountForToken, "number of to addresses larger than expected");
 
-        uint sendAmount = 0;
-        for(uint i = 0; i < _to.length; i++) {
+        uint256 sendAmount = 0;
+        for(uint256 i = 0; i < _to.length; i++) {
          sendAmount = sendAmount.add(_value[i]);
         }
         
@@ -303,7 +307,7 @@ contract MacaronSwapMultiSenderv2 is Ownable {
         else
             require(token.balanceOf(msg.sender) >= sendAmount, "insufficient amount");
             
-        for (uint j = 0; j < _to.length; j++) {
+        for (uint256 j = 0; j < _to.length; j++) {
             token.transferFrom(msg.sender, _to[j], _value[j]);
         }
         
