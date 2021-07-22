@@ -878,7 +878,7 @@ contract PotController is IPotController {
     }
 }
 
-contract BoxTogether is Ownable, PotController {
+contract BoxTogetherV2 is Ownable, PotController {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
 
@@ -1387,6 +1387,8 @@ contract BoxTogether is Ownable, PotController {
         require(block.number > endBlock, "Pot end time waiting!");
         require(users.length > 0, "There is no user for draw!");
         require(accounts.length == weights.length, "Accounts and Weights length must be same!");
+
+        _currentPotState = PotState.Ready;
 
         // Determining user weights and setting for draw
         updatePool();
