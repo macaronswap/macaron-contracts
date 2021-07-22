@@ -948,12 +948,17 @@ contract BoxTogetherV2 is Ownable, PotController {
     uint256 public minAmount;
     uint256 public maxAmount;
     uint256 public feeRatio = 2000;              // Burn fee :20%
+    uint256 public distributorRewardRatio = 100; // Dist. & Prepare methods caller reward, cut from burn fee :1%
+
+    uint256 public maxPrepareDrawPartUserLength = 200;
+    uint256 public prepareDrawPart = 0;
 
     // private vars
     uint256[] private _usersWillDelete;
     bytes32 private _treeKey;
     uint256 private _totalTicket;
     PotState private _currentPotState;
+    address[] private _callers;
     
     /* ========== EVENTS ========== */
 
@@ -1058,12 +1063,8 @@ contract BoxTogetherV2 is Ownable, PotController {
         }
     }
 
-    function getPotParticipants() public view returns (address[] memory) {
-        return users;
-    }
-
     // View function to see pending Reward on frontend.
-    function pendingTickets(address _user) external view returns (uint256) {
+    function pendingTickets(address _user) public view returns (uint256) {
         PoolInfo storage pool = poolInfo;
         UserInfo storage user = userInfo[_user];
         uint256 accTicketPerShare = pool.accTicketPerShare;
@@ -1151,6 +1152,11 @@ contract BoxTogetherV2 is Ownable, PotController {
 
     /* ========== EXTERNAL & PUBLIC FUNCTIONS ========== */
 
+    function setDistributorRewardRatio(uint256 _ratio) external onlyOwner {
+        require(_ratio < feeRatio, "Invalid fee range: Reward ratio must be smaller than feeRatio");
+        distributorRewardRatio = _ratio;
+    }
+
     function setFeeTreasury(address _feeTreasury) external onlyOwner {
         require(_feeTreasury != address(0), "_feeTreasury can't be 0x");
         feeTreasury = feeTreasury;
@@ -1170,6 +1176,7 @@ contract BoxTogetherV2 is Ownable, PotController {
 
     function setFeeRatio(uint256 _feeRatio) external onlyOwner {
         require(_feeRatio <= 100, "Invalid fee range");
+        require(_feeRatio > distributorRewardRatio, "Invalid fee range: Fee ratio must be bigger than distributorRewardRatio");
         feeRatio = _feeRatio;
     }
 
@@ -1177,7 +1184,7 @@ contract BoxTogetherV2 is Ownable, PotController {
         ticketPerBlock = _ticketPerBlock;
     }
 
-    function setBlockHeight(uint256 _height) external onlyOwner {
+    function setPotBlockHeight(uint256 _height) external onlyOwner {
         potBlockHeight = _height;
     }
     
@@ -1207,7 +1214,7 @@ contract BoxTogetherV2 is Ownable, PotController {
 
         updatePool();
         if (user.amount > 0) {
-            uint256 pending = user.amount.mul(pool.accTicketPerShare).div(1e12).sub(user.rewardDebt);
+            uint256 pending = pendingTickets(msg.sender);
             if(pending > 0) {
                 user.unusedTickets = user.unusedTickets.add(pending);
             }
@@ -1236,22 +1243,23 @@ contract BoxTogetherV2 is Ownable, PotController {
         PoolInfo storage pool = poolInfo;
         UserInfo storage user = userInfo[msg.sender];
         
-        updatePool();
         uint256 userAmount = user.amount;
-        uint256 pending = userAmount.mul(pool.accTicketPerShare).div(1e12).sub(user.rewardDebt);
+        require(userAmount > 0, "User amount must be bigger than zero!");
+
+        updatePool();
+        uint256 pending = pendingTickets(msg.sender);
         if(pending > 0) {
             user.unusedTickets = user.unusedTickets.add(pending);
         }
-        if(userAmount > 0) {
-            totalDeposits = totalDeposits.sub(userAmount);
-            user.amount = 0;
-            
-            // Unstake CLP from PC
-            _strategyWithdraw(pool, userAmount);
-            
-            pool.stakingToken.safeTransfer(address(msg.sender), userAmount);
-        }
+        
+        user.amount = 0;
         user.rewardDebt = 0;
+        totalDeposits = totalDeposits.sub(userAmount);
+        
+        // Unstake CLP from PC
+        _strategyWithdraw(pool, userAmount);
+        
+        pool.stakingToken.safeTransfer(address(msg.sender), userAmount);
 
         emit Withdraw(msg.sender, userAmount);
     }
@@ -1299,6 +1307,10 @@ contract BoxTogetherV2 is Ownable, PotController {
     function setAmountMinMax(uint _min, uint _max) external onlyOwner {
         minAmount = _min;
         maxAmount = _max;
+    }
+
+    function setPrepareDrawPartUserLength(uint256 _length) external onlyOwner {
+        maxPrepareDrawPartUserLength = _length;
     }
 
     // EMERGENCY ONLY. If tokens stuck  when potstate not in Open, Use this for emergency withdraw activate.
@@ -1383,23 +1395,37 @@ contract BoxTogetherV2 is Ownable, PotController {
     /**
      * @notice Prepare current pot for draw. Collect tickets and prepare for startDraw.
      */
-    function preparePotForDraw(address[] memory accounts, uint256[] memory weights) external onlyValidState(PotState.Open) onlyOwner notContract {
+    function preparePotForDraw() external onlyValidState(PotState.Open) notContract {
         require(block.number > endBlock, "Pot end time waiting!");
         require(users.length > 0, "There is no user for draw!");
-        require(accounts.length == weights.length, "Accounts and Weights length must be same!");
 
-        _currentPotState = PotState.Ready;
+        uint256 startIndex = maxPrepareDrawPartUserLength.mul(prepareDrawPart);
+        uint256 endIndex = Math.min(maxPrepareDrawPartUserLength.add(startIndex), users.length);
+        prepareDrawPart = prepareDrawPart + 1;
+        if(endIndex == users.length) {
+            _currentPotState = PotState.Ready;
+            prepareDrawPart = 0;
+        }
 
         // Determining user weights and setting for draw
         updatePool();
-        for (uint256 index = 0; index < accounts.length; index++) {
-            address account = accounts[index];
-            uint256 weight = weights[index];
-            
-            bytes32 accountID = bytes32(uint256(account));
-            setWeight(_getTreeKey(), weight, accountID);
-            
+        for (uint256 index = startIndex; index < endIndex; index++) {
+            address account = users[index];
+            // Harvest Tickets
             UserInfo storage user = userInfo[account];
+            if (user.amount > 0) {
+                uint256 pending = user.amount.mul(poolInfo.accTicketPerShare).div(1e12).sub(user.rewardDebt);
+                if(pending > 0) {
+                    user.unusedTickets = user.unusedTickets.add(pending);
+                }
+            }
+
+            bytes32 accountID = bytes32(uint256(account));
+            uint256 weight = user.unusedTickets;
+            _totalTicket = _totalTicket.add(weight);
+
+            setWeight(_getTreeKey(), weight, accountID);
+
             user.rewardDebt = 0;
             user.unusedTickets = 0;
             
@@ -1409,8 +1435,15 @@ contract BoxTogetherV2 is Ownable, PotController {
             }
         }
 
-        // Request to VRF for random number
-        getRandomNumber();
+        if(endIndex == users.length) {
+            // For clear pending tickets
+            poolInfo.accTicketPerShare = 0;
+
+            getRandomNumber();
+        }
+
+        // Collect callers for reward
+        _callers.push(msg.sender);
     }
 
     /**
@@ -1426,9 +1459,14 @@ contract BoxTogetherV2 is Ownable, PotController {
             winnerCount = Math.min(WINNER_COUNT, users.length);
         }
 
+        _callers.push(msg.sender);
+
         uint256 totalRewards = balanceOfRewards();
+        uint256 callerFee = totalRewards.mul(distributorRewardRatio).div(100).div(100);
         uint256 fee = totalRewards.mul(feeRatio).div(100).div(100);
         totalRewards = totalRewards.sub(fee);
+
+        require(callerFee < fee, "Caller Fee must be smaller than fee.");
 
         if (fee > 0) {
             _harvestPendingRewards();
@@ -1438,7 +1476,17 @@ contract BoxTogetherV2 is Ownable, PotController {
             }
             
             // Send to burn treasury rest of fee
-            poolInfo.rewardToken.safeTransfer(feeTreasury, fee);
+            poolInfo.rewardToken.safeTransfer(feeTreasury, fee.sub(callerFee));
+            
+            // Send caller fee to callers
+            uint256 feePerCaller = callerFee.div(_callers.length);
+
+            do {
+                address caller = _callers[_callers.length-1];                
+                poolInfo.rewardToken.safeTransfer(caller, feePerCaller);    
+                _callers.pop();
+            }
+            while(_callers.length > 0);
         }
         
         uint256 rewardPerUser = totalRewards.div(winnerCount);
