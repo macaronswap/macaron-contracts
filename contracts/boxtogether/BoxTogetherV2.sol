@@ -1063,7 +1063,7 @@ contract BoxTogetherV2 is Ownable, PotController {
         uint256 weight = getWeight(_user);
         
         if(user.amount > 0) {
-            uint256 passedBlocks = block.number.sub(startBlock);
+            uint256 passedBlocks = Math.min(block.number, endBlock).sub(startBlock);
             uint256 totalBlocks = endBlock.sub(startBlock);
             return weight.mul(passedBlocks).div(totalBlocks);
         }
