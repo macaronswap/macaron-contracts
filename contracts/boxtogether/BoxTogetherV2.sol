@@ -829,7 +829,7 @@ contract PotController is IPotController {
     /* ========== CONSTANT ========== */
 
     uint constant private MAX_TREE_LEAVES = 5;
-    IRNGenerator private RNGenerator = IRNGenerator(0x022a45D2649eC65E0654D7c22DC218e69e5BB71B);
+    IRNGenerator private RNGenerator = IRNGenerator(0x83f7e8Cf941d32bEB10EA426A3172FCD1675ea1c);
 
     /* ========== STATE VARIABLES ========== */
 
@@ -896,6 +896,7 @@ contract BoxTogetherV2 is Ownable, PotController {
     // Info of each user.
     struct UserInfo {
         uint256 amount;     // How many LP tokens the user has provided.
+        uint256 index;      // users array index
     }
 
     struct PoolInfo {
@@ -918,7 +919,7 @@ contract BoxTogetherV2 is Ownable, PotController {
         uint256[] winnerTickets;    // Winner ticket count
         uint256 rewardPerUser;      // totalRewards/winners.length
         uint256 totalRewards;       // Total distributed rewards
-        uint256 totalTicket;        // Total ticket count in this pot
+        uint256 totalWeight;        // Total weight
     }
 
     /* ========== STATE VARIABLES ========== */
@@ -927,8 +928,7 @@ contract BoxTogetherV2 is Ownable, PotController {
     address deployer;
     address feeTreasury;
 
-    IBEP20 public stakingToken;    
-    uint256 public ticketPerBlock;
+    IBEP20 public stakingToken;
     PoolInfo public poolInfo;
 
     mapping (address => UserInfo) public userInfo;  // Info of each user that stakes LP tokens.
@@ -936,6 +936,7 @@ contract BoxTogetherV2 is Ownable, PotController {
     mapping (address => bool) public isParticipant;
 
     address[] users;                        // Pot participants
+    uint256 usersLength = 0;
     uint256 public WINNER_COUNT = 1;
     
     uint256 public startBlock;              // The block number when pot starts.
@@ -948,12 +949,8 @@ contract BoxTogetherV2 is Ownable, PotController {
     uint256 public feeRatio = 2000;              // Burn fee :20%
     uint256 public distributorRewardRatio = 100; // Dist. & Prepare methods caller reward, cut from burn fee :1%
 
-    uint256 public maxPrepareDrawPartUserLength = 200;
-    uint256 public prepareDrawPart = 0;
-
     // private vars
     uint256[] private _usersWillDelete;
-    uint256 private _totalTicket;
     PotState private _currentPotState;
     address[] private _callers;
     
@@ -966,7 +963,6 @@ contract BoxTogetherV2 is Ownable, PotController {
 
     constructor(
         IBEP20 _stakingToken,
-        uint256 _ticketPerBlock,
         uint256 _startBlock,
         uint256 _potBlockHeight,
         uint256 _minAmount,
@@ -979,7 +975,6 @@ contract BoxTogetherV2 is Ownable, PotController {
         address _feeTreasury
     ) public {
         stakingToken = _stakingToken;
-        ticketPerBlock = _ticketPerBlock;
         potId = 1;
         _currentPotState = PotState.Open;
         startBlock = _startBlock;
@@ -1115,7 +1110,7 @@ contract BoxTogetherV2 is Ownable, PotController {
     }
 
     function userLength() public view returns (uint256) {
-        return users.length;
+        return usersLength;
     }
 
     function _getTreeKey() private view returns(bytes32) {
@@ -1164,14 +1159,6 @@ contract BoxTogetherV2 is Ownable, PotController {
         feeTreasury = feeTreasury;
     }
 
-    function stopReward() external onlyOwner {
-        endBlock = block.number;
-    }
-    
-    function setRewardEndBlock(uint256 _endBlock) external onlyOwner {
-        endBlock = _endBlock;
-    }
-
     function setWinnerCount(uint256 _winnerCount) external onlyOwner {
         WINNER_COUNT = _winnerCount;
     }
@@ -1182,11 +1169,7 @@ contract BoxTogetherV2 is Ownable, PotController {
         feeRatio = _feeRatio;
     }
 
-    function setTicketPerBlock(uint256 _ticketPerBlock) external onlyOwner{
-        ticketPerBlock = _ticketPerBlock;
-    }
-
-    function setPotBlockHeight(uint256 _height) external onlyOwner {
+    function setPotBlockHeight(uint256 _height) external onlyOwner onlyValidState(PotState.Closed) {
         potBlockHeight = _height;
     }
   
@@ -1219,8 +1202,10 @@ contract BoxTogetherV2 is Ownable, PotController {
         
         // Add user to array for navigate in users
         if(isParticipant[account] == false) {
-            users.push(account);
             isParticipant[account] = true;
+            users.push(account);
+            user.index = users.length - 1;
+            usersLength = usersLength + 1;
         }
 
         emit Deposit(msg.sender, _amount);
@@ -1250,6 +1235,11 @@ contract BoxTogetherV2 is Ownable, PotController {
         
         // Unstake CLP from PC
         _strategyWithdraw(pool, userAmount);
+        
+        // Remove user from array
+        uint256 index = user.index;
+        users[index] = users[users.length - 1];
+        users.pop();
         
         pool.stakingToken.safeTransfer(address(msg.sender), userAmount);
 
@@ -1297,10 +1287,6 @@ contract BoxTogetherV2 is Ownable, PotController {
     function setAmountMinMax(uint _min, uint _max) external onlyOwner {
         minAmount = _min;
         maxAmount = _max;
-    }
-
-    function setPrepareDrawPartUserLength(uint256 _length) external onlyOwner {
-        maxPrepareDrawPartUserLength = _length;
     }
 
     // EMERGENCY ONLY. If tokens stuck  when potstate not in Open, Use this for emergency withdraw activate.
@@ -1387,31 +1373,11 @@ contract BoxTogetherV2 is Ownable, PotController {
      */
     function preparePotForDraw() external onlyValidState(PotState.Closed) notContract {
         require(block.number > endBlock, "Pot end time waiting!");
-        require(users.length > 0, "There is no user for draw!");
+        require(usersLength > 0, "There is no user for draw!");
 
         _currentPotState = PotState.Ready;
-
-        uint256 startIndex = maxPrepareDrawPartUserLength.mul(prepareDrawPart);
-        uint256 endIndex = Math.min(maxPrepareDrawPartUserLength.add(startIndex), users.length);
-        prepareDrawPart = prepareDrawPart + 1;
-        if(endIndex == users.length) {
-            
-            prepareDrawPart = 0;
-        }
-
-        for (uint256 index = startIndex; index < endIndex; index++) {
-            address account = users[index];
-
-            
-            if(user.amount == 0) {
-                // Delete user for next time
-                _usersWillDelete.push(index);
-            }
-        }
-
-        if(endIndex == users.length) {
-            getRandomNumber();
-        }
+        
+        getRandomNumber();
 
         // Collect callers for reward
         _callers.push(msg.sender);
@@ -1426,8 +1392,8 @@ contract BoxTogetherV2 is Ownable, PotController {
         _currentPotState = PotState.Dist;
 
         uint256 winnerCount = WINNER_COUNT;
-        if(users.length > 0) {
-            winnerCount = Math.min(WINNER_COUNT, users.length);
+        if(usersLength > 0) {
+            winnerCount = Math.min(WINNER_COUNT, usersLength);
         }
 
         _callers.push(msg.sender);
@@ -1471,19 +1437,13 @@ contract BoxTogetherV2 is Ownable, PotController {
         history.winnerTickets = new uint256[](winnerCount);
         history.rewardPerUser = rewardPerUser;
         history.totalRewards = totalRewards;
-        history.totalTicket = _totalTicket;
+        history.totalWeight = totalWeight;
         
         for (uint i = 0; i < winnerCount; i++) {
-            uint rn = uint256(keccak256(abi.encode(_randomness[potId], i))).mod(_totalTicket);
+            uint rn = uint256(keccak256(abi.encode(_randomness[potId], i))).mod(totalWeight);
             (address selected, uint weight) = draw(_getTreeKey(), rn);
-            UserInfo storage user = userInfo[selected];
-            if(_isSameRewardWithStakingToken()) {
-                user.amount = user.amount.add(rewardPerUser);
-                totalDeposits = totalDeposits.add(rewardPerUser);
-            } 
-            else {
-                poolInfo.rewardToken.safeTransfer(selected, rewardPerUser);
-            }
+            poolInfo.rewardToken.safeTransfer(selected, rewardPerUser);
+            
             history.winners[i] = selected;
             history.winnerTickets[i] = weight;
         }
@@ -1510,41 +1470,21 @@ contract BoxTogetherV2 is Ownable, PotController {
         startBlock = block.number;
         endBlock = block.number.add(potBlockHeight);
         potId = potId + 1;
-
-        // Delete unnecessary users (This can be done with different method for not caught gaslimit)
-        if(_usersWillDelete.length > 0) {
-            do {
-                uint256 index = _usersWillDelete[_usersWillDelete.length-1];
-                delete isParticipant[users[index]];
-                users[index] = users[users.length - 1];
-                users.pop();
-    
-                _usersWillDelete.pop();
-            }
-            while(_usersWillDelete.length > 0);
-        }
+        usersLength = users.length;
+        totalWeight = 0;
 
         createTree(_getTreeKey());
+        
+        for(uint256 i = 0; i < users.length; i++) {
+            address account = users[i];
+            bytes32 accountID = bytes32(uint256(account));
+            UserInfo storage user = userInfo[account];
+            uint256 weight = user.amount.mul(potBlockHeight);
+            totalWeight = totalWeight.add(weight);
+            
+            setWeight(_getTreeKey(), weight, accountID);
+        }
 
         strategyDeposit(poolInfo, 0);
-    }
-    
-    function testForLoop() external onlyOwner {
-        for(uint256 i = 0; i < 300; i++) {
-            bytes32 accountID = bytes32(uint256(msg.sender));
-            uint256 weight = 0;
-            setWeight(_getTreeKey(), weight, accountID);
-        }
-    }
-    
-    function testWhileLoop() external onlyOwner {
-        uint256 i = 300;
-        do {
-            bytes32 accountID = bytes32(uint256(msg.sender));
-            uint256 weight = 0;
-            setWeight(_getTreeKey(), weight, accountID);
-            i--;
-        }
-        while(i > 0);
     }
 }
