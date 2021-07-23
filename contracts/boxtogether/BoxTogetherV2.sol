@@ -1240,6 +1240,7 @@ contract BoxTogetherV2 is Ownable, PotController {
         uint256 index = user.index;
         users[index] = users[users.length - 1];
         users.pop();
+        delete isParticipant[account];
         
         pool.stakingToken.safeTransfer(address(msg.sender), userAmount);
 
@@ -1401,17 +1402,18 @@ contract BoxTogetherV2 is Ownable, PotController {
         uint256 totalRewards = balanceOfRewards();
         uint256 callerFee = totalRewards.mul(distributorRewardRatio).div(100).div(100);
         uint256 fee = totalRewards.mul(feeRatio).div(100).div(100);
-        totalRewards = totalRewards.sub(fee);
-
         require(callerFee < fee, "Caller Fee must be smaller than fee.");
 
-        if (fee > 0) {
+        if(_isSameRewardWithStakingToken()) {
+            _strategyWithdraw(poolInfo, totalRewards);
+        }
+        else {
             _harvestPendingRewards();
-
-            if(_isSameRewardWithStakingToken()) {
-                _strategyWithdraw(poolInfo, fee);
-            }
+        }
+        
+        totalRewards = totalRewards.sub(fee);
             
+        if (fee > 0) {
             // Send to burn treasury rest of fee
             poolInfo.rewardToken.safeTransfer(feeTreasury, fee.sub(callerFee));
             
