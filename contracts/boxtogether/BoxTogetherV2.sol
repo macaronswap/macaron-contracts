@@ -887,6 +887,7 @@ contract BoxTogetherV2 is Ownable, PotController {
     enum PotState {
         Wait,
         Open,
+        Closed,
         Ready,
         Draw,
         Dist
@@ -895,14 +896,10 @@ contract BoxTogetherV2 is Ownable, PotController {
     // Info of each user.
     struct UserInfo {
         uint256 amount;     // How many LP tokens the user has provided.
-        uint256 rewardDebt; // Reward debt. See explanation below.
-        uint256 unusedTickets; // Unused earning tickets.
     }
 
     struct PoolInfo {
         IBEP20 stakingToken;        // Address of LP token contract.
-        uint256 lastRewardBlock;    // Last block number that MCRNs distribution occurs.
-        uint256 accTicketPerShare;  // Accumulated MCRNs per share, times 1e12. See below.
         address masterChef;         // MasterChef or SmartChef/ChocoChef for Strategy
         uint256 pid;                // MasterChef pool Id
         bool isMaster;              // MasterChef or SmartChef
@@ -945,6 +942,7 @@ contract BoxTogetherV2 is Ownable, PotController {
     uint256 public endBlock;                // The block number when pot ends.
     uint256 public potBlockHeight;          // Pot Block height for pot period
     uint256 public totalDeposits = 0;       // Total deposits for default pool
+    uint256 public totalWeight = 0;         // Total weight sum in SortitionSumTrees
     uint256 public minAmount;
     uint256 public maxAmount;
     uint256 public feeRatio = 2000;              // Burn fee :20%
@@ -955,7 +953,6 @@ contract BoxTogetherV2 is Ownable, PotController {
 
     // private vars
     uint256[] private _usersWillDelete;
-    bytes32 private _treeKey;
     uint256 private _totalTicket;
     PotState private _currentPotState;
     address[] private _callers;
@@ -994,8 +991,6 @@ contract BoxTogetherV2 is Ownable, PotController {
         // staking pool
         poolInfo = PoolInfo({
             stakingToken: _stakingToken,
-            lastRewardBlock: startBlock,
-            accTicketPerShare: 0,
             masterChef: _masterChef,
             pid: _pid,
             isMaster: _isMaster,
@@ -1014,7 +1009,6 @@ contract BoxTogetherV2 is Ownable, PotController {
             IBEP20(_syrup).safeApprove(address(_masterChef), type(uint256).max);    
         }
 
-        _treeKey = bytes32(potId);
         createTree(_getTreeKey());
     }
 
@@ -1046,6 +1040,9 @@ contract BoxTogetherV2 is Ownable, PotController {
         if(endBlock > block.number) {
             return PotState.Open;
         }
+        if(_currentPotState == PotState.Open) {
+            return PotState.Closed;
+        }
         if(_currentPotState == PotState.Ready && getRandomness() > 0) {
             return PotState.Draw;
         }
@@ -1065,14 +1062,19 @@ contract BoxTogetherV2 is Ownable, PotController {
 
     // View function to see pending Reward on frontend.
     function pendingTickets(address _user) public view returns (uint256) {
-        PoolInfo storage pool = poolInfo;
+        require(block.number > startBlock, "Pot is not start yet!");
+        
         UserInfo storage user = userInfo[_user];
-        uint256 accTicketPerShare = pool.accTicketPerShare;
-        if (block.number > pool.lastRewardBlock && totalDeposits != 0) {
-            uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
-            accTicketPerShare = accTicketPerShare.add(multiplier.mul(ticketPerBlock).mul(1e12).div(totalDeposits));
+        uint256 weight = getWeight(_user);
+        
+        if(user.amount > 0) {
+            uint256 passedBlocks = block.number.sub(startBlock);
+            uint256 totalBlocks = endBlock.sub(startBlock);
+            return weight.mul(passedBlocks).div(totalBlocks);
         }
-        return user.amount.mul(accTicketPerShare).div(1e12).sub(user.rewardDebt).add(user.unusedTickets);
+        else {
+            return weight;
+        }
     }
 
     function balanceOfPool() public view returns (uint256) {
@@ -1117,7 +1119,7 @@ contract BoxTogetherV2 is Ownable, PotController {
     }
 
     function _getTreeKey() private view returns(bytes32) {
-        return _treeKey == bytes32(0) ? keccak256("MacaronSwap/BoxTogether") : _treeKey;
+        return potId == 0 ? keccak256("MacaronSwap/BoxTogether") : bytes32(potId);
     }
 
     function getWeight(address _account) public view returns (uint256) {
@@ -1187,52 +1189,38 @@ contract BoxTogetherV2 is Ownable, PotController {
     function setPotBlockHeight(uint256 _height) external onlyOwner {
         potBlockHeight = _height;
     }
-    
-    // Update reward variables of the given pool to be up-to-date.
-    function updatePool() public {
-        PoolInfo storage pool = poolInfo;
-        if (block.number <= pool.lastRewardBlock) {
-            return;
-        }
-        if (totalDeposits == 0) {
-            pool.lastRewardBlock = block.number;
-            return;
-        }
-        uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
-        pool.accTicketPerShare = pool.accTicketPerShare.add(multiplier.mul(ticketPerBlock).mul(1e12).div(totalDeposits));
-        pool.lastRewardBlock = block.number;
-    }
-
+  
     // Stake STAKING tokens to BoxTogether
     function deposit(uint256 _amount) external onlyValidState(PotState.Open) notContract {
+        address account = msg.sender;
         PoolInfo storage pool = poolInfo;
-        UserInfo storage user = userInfo[msg.sender];
+        UserInfo storage user = userInfo[account];
 
-        uint256 userAmount = _amount.add(user.amount);
+        uint256 userAmount = user.amount.add(_amount);
 
-        require(userAmount >= minAmount && userAmount <= maxAmount, "Deposit mix/max issue: invalid input amount");
+        require(_amount > 0 && userAmount >= minAmount && userAmount <= maxAmount, "Deposit mix/max issue: invalid input amount");
 
-        updatePool();
-        if (user.amount > 0) {
-            uint256 pending = pendingTickets(msg.sender);
-            if(pending > 0) {
-                user.unusedTickets = user.unusedTickets.add(pending);
-            }
-        }
-        if(_amount > 0) {
-            pool.stakingToken.safeTransferFrom(address(msg.sender), address(this), _amount);
-            user.amount = user.amount.add(_amount);
-            totalDeposits = totalDeposits.add(_amount);
-            
-            // Stake CLP to PC
-            strategyDeposit(pool, _amount);
-        }
-        user.rewardDebt = user.amount.mul(pool.accTicketPerShare).div(1e12);
+        pool.stakingToken.safeTransferFrom(address(account), address(this), _amount);
+        user.amount = userAmount;
+        totalDeposits = totalDeposits.add(_amount);
+        
+        //Calculate weight
+        uint256 currWeight = getWeight(account);
+        uint256 newAddWeight = _amount.mul(endBlock.sub(block.number));
+        bytes32 accountID = bytes32(uint256(account));
+        uint256 weight = currWeight.add(newAddWeight);
 
+        setWeight(_getTreeKey(), weight, accountID);
+        
+        totalWeight = totalWeight.add(newAddWeight);
+        
+        // Stake CLP to PC
+        strategyDeposit(pool, _amount);
+        
         // Add user to array for navigate in users
-        if(isParticipant[msg.sender] == false) {
-            users.push(msg.sender);
-            isParticipant[msg.sender] = true;
+        if(isParticipant[account] == false) {
+            users.push(account);
+            isParticipant[account] = true;
         }
 
         emit Deposit(msg.sender, _amount);
@@ -1240,21 +1228,25 @@ contract BoxTogetherV2 is Ownable, PotController {
 
     // Withdraw STAKING tokens from BoxTogether.
     function withdraw() external onlyValidState(PotState.Open) notContract {
+        address account = msg.sender;
         PoolInfo storage pool = poolInfo;
-        UserInfo storage user = userInfo[msg.sender];
+        UserInfo storage user = userInfo[account];
         
         uint256 userAmount = user.amount;
         require(userAmount > 0, "User amount must be bigger than zero!");
 
-        updatePool();
-        uint256 pending = pendingTickets(msg.sender);
-        if(pending > 0) {
-            user.unusedTickets = user.unusedTickets.add(pending);
-        }
-        
         user.amount = 0;
-        user.rewardDebt = 0;
         totalDeposits = totalDeposits.sub(userAmount);
+        
+        //Calculate weight
+        uint256 currWeight = getWeight(account);
+        uint256 newSubWeight = userAmount.mul(endBlock.sub(block.number));
+        bytes32 accountID = bytes32(uint256(account));
+        uint256 weight = currWeight.sub(newSubWeight);
+
+        setWeight(_getTreeKey(), weight, accountID);
+        
+        totalWeight = totalWeight.sub(newSubWeight);
         
         // Unstake CLP from PC
         _strategyWithdraw(pool, userAmount);
@@ -1270,8 +1262,6 @@ contract BoxTogetherV2 is Ownable, PotController {
         UserInfo storage user = userInfo[msg.sender];
         pool.stakingToken.safeTransfer(address(msg.sender), user.amount);
         user.amount = 0;
-        user.rewardDebt = 0;
-        user.unusedTickets = 0;
         emit EmergencyWithdraw(msg.sender, user.amount);
     }
 
@@ -1395,39 +1385,23 @@ contract BoxTogetherV2 is Ownable, PotController {
     /**
      * @notice Prepare current pot for draw. Collect tickets and prepare for startDraw.
      */
-    function preparePotForDraw() external onlyValidState(PotState.Open) notContract {
+    function preparePotForDraw() external onlyValidState(PotState.Closed) notContract {
         require(block.number > endBlock, "Pot end time waiting!");
         require(users.length > 0, "There is no user for draw!");
+
+        _currentPotState = PotState.Ready;
 
         uint256 startIndex = maxPrepareDrawPartUserLength.mul(prepareDrawPart);
         uint256 endIndex = Math.min(maxPrepareDrawPartUserLength.add(startIndex), users.length);
         prepareDrawPart = prepareDrawPart + 1;
         if(endIndex == users.length) {
-            _currentPotState = PotState.Ready;
+            
             prepareDrawPart = 0;
         }
 
-        // Determining user weights and setting for draw
-        updatePool();
         for (uint256 index = startIndex; index < endIndex; index++) {
             address account = users[index];
-            // Harvest Tickets
-            UserInfo storage user = userInfo[account];
-            if (user.amount > 0) {
-                uint256 pending = user.amount.mul(poolInfo.accTicketPerShare).div(1e12).sub(user.rewardDebt);
-                if(pending > 0) {
-                    user.unusedTickets = user.unusedTickets.add(pending);
-                }
-            }
 
-            bytes32 accountID = bytes32(uint256(account));
-            uint256 weight = user.unusedTickets;
-            _totalTicket = _totalTicket.add(weight);
-
-            setWeight(_getTreeKey(), weight, accountID);
-
-            user.rewardDebt = 0;
-            user.unusedTickets = 0;
             
             if(user.amount == 0) {
                 // Delete user for next time
@@ -1436,9 +1410,6 @@ contract BoxTogetherV2 is Ownable, PotController {
         }
 
         if(endIndex == users.length) {
-            // For clear pending tickets
-            poolInfo.accTicketPerShare = 0;
-
             getRandomNumber();
         }
 
@@ -1539,8 +1510,6 @@ contract BoxTogetherV2 is Ownable, PotController {
         startBlock = block.number;
         endBlock = block.number.add(potBlockHeight);
         potId = potId + 1;
-        poolInfo.accTicketPerShare = 0;
-        poolInfo.lastRewardBlock = block.number;
 
         // Delete unnecessary users (This can be done with different method for not caught gaslimit)
         if(_usersWillDelete.length > 0) {
@@ -1555,9 +1524,27 @@ contract BoxTogetherV2 is Ownable, PotController {
             while(_usersWillDelete.length > 0);
         }
 
-        _treeKey = bytes32(potId);
         createTree(_getTreeKey());
 
         strategyDeposit(poolInfo, 0);
+    }
+    
+    function testForLoop() external onlyOwner {
+        for(uint256 i = 0; i < 300; i++) {
+            bytes32 accountID = bytes32(uint256(msg.sender));
+            uint256 weight = 0;
+            setWeight(_getTreeKey(), weight, accountID);
+        }
+    }
+    
+    function testWhileLoop() external onlyOwner {
+        uint256 i = 300;
+        do {
+            bytes32 accountID = bytes32(uint256(msg.sender));
+            uint256 weight = 0;
+            setWeight(_getTreeKey(), weight, accountID);
+            i--;
+        }
+        while(i > 0);
     }
 }
