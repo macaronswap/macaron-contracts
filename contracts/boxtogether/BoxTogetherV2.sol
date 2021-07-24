@@ -829,7 +829,7 @@ contract PotController is IPotController {
     /* ========== CONSTANT ========== */
 
     uint constant private MAX_TREE_LEAVES = 5;
-    IRNGenerator private RNGenerator = IRNGenerator(0x83f7e8Cf941d32bEB10EA426A3172FCD1675ea1c);
+    IRNGenerator private RNGenerator = IRNGenerator(0x022a45D2649eC65E0654D7c22DC218e69e5BB71B);
 
     /* ========== STATE VARIABLES ========== */
 
@@ -1060,16 +1060,9 @@ contract BoxTogetherV2 is Ownable, PotController {
         require(block.number > startBlock, "Pot is not start yet!");
         
         UserInfo storage user = userInfo[_user];
-        uint256 weight = getWeight(_user);
-        
-        if(user.amount > 0) {
-            uint256 passedBlocks = Math.min(block.number, endBlock).sub(startBlock);
-            uint256 totalBlocks = endBlock.sub(startBlock);
-            return weight.mul(passedBlocks).div(totalBlocks);
-        }
-        else {
-            return weight;
-        }
+        uint256 currWeight = getWeight(_user);
+        uint256 subWeight = user.amount.mul(endBlock.sub(block.number));
+        return currWeight.sub(subWeight);
     }
 
     function balanceOfPool() public view returns (uint256) {
@@ -1201,7 +1194,7 @@ contract BoxTogetherV2 is Ownable, PotController {
         strategyDeposit(pool, _amount);
         
         // Add user to array for navigate in users
-        if(isParticipant[account] == false) {
+        if(isParticipant[account] == false && currWeight == 0) {
             isParticipant[account] = true;
             users.push(account);
             user.index = users.length - 1;
