@@ -1204,7 +1204,9 @@ contract BoxTogether is Ownable, PotController {
         PoolInfo storage pool = poolInfo;
         UserInfo storage user = userInfo[msg.sender];
 
-        require(_amount >= minAmount && _amount.add(user.amount) <= maxAmount, "Deposit mix/max issue: invalid input amount");
+        uint256 userAmount = _amount.add(user.amount);
+
+        require(userAmount >= minAmount && userAmount <= maxAmount, "Deposit mix/max issue: invalid input amount");
 
         updatePool();
         if (user.amount > 0) {
@@ -1233,27 +1235,28 @@ contract BoxTogether is Ownable, PotController {
     }
 
     // Withdraw STAKING tokens from BoxTogether.
-    function withdraw(uint256 _amount) external onlyValidState(PotState.Open) notContract {
+    function withdraw() external onlyValidState(PotState.Open) notContract {
         PoolInfo storage pool = poolInfo;
         UserInfo storage user = userInfo[msg.sender];
-        require(user.amount >= _amount, "withdraw: not good");
+        
         updatePool();
-        uint256 pending = user.amount.mul(pool.accTicketPerShare).div(1e12).sub(user.rewardDebt);
+        uint256 userAmount = user.amount;
+        uint256 pending = userAmount.mul(pool.accTicketPerShare).div(1e12).sub(user.rewardDebt);
         if(pending > 0) {
             user.unusedTickets = user.unusedTickets.add(pending);
         }
-        if(_amount > 0) {
-            user.amount = user.amount.sub(_amount);
-            totalDeposits = totalDeposits.sub(_amount);
+        if(userAmount > 0) {
+            totalDeposits = totalDeposits.sub(userAmount);
+            user.amount = 0;
             
             // Unstake CLP from PC
-            _strategyWithdraw(pool, _amount);
+            _strategyWithdraw(pool, userAmount);
             
-            pool.stakingToken.safeTransfer(address(msg.sender), _amount);
+            pool.stakingToken.safeTransfer(address(msg.sender), userAmount);
         }
-        user.rewardDebt = user.amount.mul(pool.accTicketPerShare).div(1e12);
+        user.rewardDebt = 0;
 
-        emit Withdraw(msg.sender, _amount);
+        emit Withdraw(msg.sender, userAmount);
     }
 
     // Withdraw without caring about rewards. EMERGENCY ONLY.

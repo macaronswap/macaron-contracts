@@ -1381,7 +1381,7 @@ contract BoxTogetherV2 is Ownable, PotController {
         getRandomNumber();
 
         // Collect callers for reward
-        _callers.push(msg.sender);
+        // _callers.push(msg.sender);
     }
 
     /**
