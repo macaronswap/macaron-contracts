@@ -1193,6 +1193,8 @@ contract BoxTogetherV2 is Ownable, PotController {
         bytes32 accountID = bytes32(uint256(account));
         uint256 weight = currWeight.add(newAddWeight);
 
+        // todo: Check need join?
+
         setWeight(_getTreeKey(), weight, accountID);
         
         totalWeight = totalWeight.add(newAddWeight);
