@@ -1245,8 +1245,9 @@ contract BoxTogetherV2 is Ownable, PotController {
         PoolInfo storage pool = poolInfo;
         UserInfo storage user = userInfo[msg.sender];
         pool.stakingToken.safeTransfer(address(msg.sender), user.amount);
-        user.amount = 0;
+        totalDeposits = totalDeposits.sub(user.amount);
         emit EmergencyWithdraw(msg.sender, user.amount);
+        user.amount = 0;
     }
 
     function unstakeAll() external onlyOwner {
