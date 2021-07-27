@@ -1231,6 +1231,7 @@ contract BoxTogetherV2 is Ownable, PotController {
         
         // Remove user from array
         uint256 index = user.index;
+        userInfo[users[users.length - 1]].index = index;
         users[index] = users[users.length - 1];
         users.pop();
         delete isParticipant[account];
