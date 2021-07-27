@@ -829,7 +829,7 @@ contract PotController is IPotController {
     /* ========== CONSTANT ========== */
 
     uint constant private MAX_TREE_LEAVES = 5;
-    IRNGenerator private RNGenerator = IRNGenerator(0x022a45D2649eC65E0654D7c22DC218e69e5BB71B);
+    IRNGenerator private RNGenerator = IRNGenerator(0x83f7e8Cf941d32bEB10EA426A3172FCD1675ea1c);
 
     /* ========== STATE VARIABLES ========== */
 
@@ -897,7 +897,6 @@ contract BoxTogetherV2 is Ownable, PotController {
     struct UserInfo {
         uint256 amount;     // How many LP tokens the user has provided.
         uint256 index;      // users array index
-        uint256 lastMovePotId;
     }
 
     struct PoolInfo {
@@ -917,12 +916,12 @@ contract BoxTogetherV2 is Ownable, PotController {
         uint256 totalDeposits;      // Total deposited amount when pot closing
         uint256 date;               // Pot rewards distribute time
         address[] winners;          // Pot winner accounts
-        uint256[] winnerWeights;    // Winner ticket count
+        uint256[] winnerTickets;    // Winner ticket count
         uint256 rewardPerUser;      // totalRewards/winners.length
         uint256 totalRewards;       // Total distributed rewards
         uint256 totalWeight;        // Total weight
     }
-    
+
     /* ========== STATE VARIABLES ========== */
 
     // important addresses
@@ -934,12 +933,11 @@ contract BoxTogetherV2 is Ownable, PotController {
 
     mapping (address => UserInfo) public userInfo;  // Info of each user that stakes LP tokens.
     mapping (uint256 => PotInfo) private _histories;
+    mapping (address => bool) public isParticipant;
 
-    address[] oldUsers;                     // Old Pot participants
-    address[] activeUsers;                  // New Pot participants
+    address[] users;                        // Pot participants
+    uint256 usersLength = 0;
     uint256 public WINNER_COUNT = 1;
-    uint256 usersCount;
-    uint256 oldTotalWeight;
     
     uint256 public startBlock;              // The block number when pot starts.
     uint256 public endBlock;                // The block number when pot ends.
@@ -952,18 +950,16 @@ contract BoxTogetherV2 is Ownable, PotController {
     uint256 public distributorRewardRatio = 100; // Dist. & Prepare methods caller reward, cut from burn fee :1%
 
     // private vars
-    uint256[] private _usersWillDeleteFromOldList;
     uint256[] private _usersWillDelete;
     PotState private _currentPotState;
     address[] private _callers;
-    bytes32 private _treeKey = keccak256("MacaronSwap/BoxTogether");
     
     /* ========== EVENTS ========== */
 
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 amount);
-    event DrawRewardsDistributed(uint potId, address[] winner);
+    event DrawRewardsDistributed(uint potId, address[] winners);
 
     constructor(
         IBEP20 _stakingToken,
@@ -1008,7 +1004,7 @@ contract BoxTogetherV2 is Ownable, PotController {
             IBEP20(_syrup).safeApprove(address(_masterChef), type(uint256).max);    
         }
 
-        createTree(_treeKey);
+        createTree(_getTreeKey());
     }
 
     /* ========== MODIFIERS ========== */
@@ -1064,9 +1060,16 @@ contract BoxTogetherV2 is Ownable, PotController {
         require(block.number > startBlock, "Pot is not start yet!");
         
         UserInfo storage user = userInfo[_user];
-        uint256 currWeight = getWeight(_user);
-        uint256 subWeight = user.amount.mul(endBlock.sub(block.number));
-        return currWeight.sub(subWeight);
+        uint256 weight = getWeight(_user);
+        
+        if(user.amount > 0) {
+            uint256 passedBlocks = Math.min(block.number, endBlock).sub(startBlock);
+            uint256 totalBlocks = endBlock.sub(startBlock);
+            return weight.mul(passedBlocks).div(totalBlocks);
+        }
+        else {
+            return weight;
+        }
     }
 
     function balanceOfPool() public view returns (uint256) {
@@ -1107,12 +1110,16 @@ contract BoxTogetherV2 is Ownable, PotController {
     }
 
     function userLength() public view returns (uint256) {
-        return usersCount;
+        return usersLength;
+    }
+
+    function _getTreeKey() private view returns(bytes32) {
+        return potId == 0 ? keccak256("MacaronSwap/BoxTogether") : bytes32(potId);
     }
 
     function getWeight(address _account) public view returns (uint256) {
         bytes32 accountID = bytes32(uint256(_account));
-        return getWeight(_treeKey, accountID);
+        return getWeight(_getTreeKey(), accountID);
     }
     
     //todo: delete
@@ -1177,8 +1184,6 @@ contract BoxTogetherV2 is Ownable, PotController {
         require(_amount > 0 && userAmount >= minAmount && userAmount <= maxAmount, "Deposit mix/max issue: invalid input amount");
 
         pool.stakingToken.safeTransferFrom(address(account), address(this), _amount);
-        
-        // Update userInfo
         user.amount = userAmount;
         totalDeposits = totalDeposits.add(_amount);
         
@@ -1188,28 +1193,23 @@ contract BoxTogetherV2 is Ownable, PotController {
         bytes32 accountID = bytes32(uint256(account));
         uint256 weight = currWeight.add(newAddWeight);
 
-        setWeight(_treeKey, weight, accountID);
+        // todo: Check need join?
+
+        setWeight(_getTreeKey(), weight, accountID);
+        
         totalWeight = totalWeight.add(newAddWeight);
         
         // Stake CLP to PC
         strategyDeposit(pool, _amount);
         
         // Add user to array for navigate in users
-        if(currWeight == 0) {
-            // first time deposit
-            activeUsers.push(account);
-            usersCount++;
+        if(isParticipant[account] == false) {
+            isParticipant[account] = true;
+            users.push(account);
+            user.index = users.length - 1;
+            usersLength = usersLength + 1;
         }
-        else {
-            // old user or second time deposit in current pot
-            if(user.lastMovePotId != potId) {
-                //old user
-                activeUsers.push(account);
-            }
-        }
-        
-        user.lastMovePotId = potId;
-        
+
         emit Deposit(msg.sender, _amount);
     }
 
@@ -1222,7 +1222,6 @@ contract BoxTogetherV2 is Ownable, PotController {
         uint256 userAmount = user.amount;
         require(userAmount > 0, "User amount must be bigger than zero!");
 
-        // Update userInfo
         user.amount = 0;
         totalDeposits = totalDeposits.sub(userAmount);
         
@@ -1232,19 +1231,18 @@ contract BoxTogetherV2 is Ownable, PotController {
         bytes32 accountID = bytes32(uint256(account));
         uint256 weight = currWeight.sub(newSubWeight);
 
-        setWeight(_treeKey, weight, accountID);
+        setWeight(_getTreeKey(), weight, accountID);
+        
         totalWeight = totalWeight.sub(newSubWeight);
         
         // Unstake CLP from PC
         _strategyWithdraw(pool, userAmount);
         
-        // Add user to active users array
-        if(user.lastMovePotId != potId) {
-            //old user
-            activeUsers.push(account);
-        }
-        
-        user.lastMovePotId = potId;
+        // Remove user from array
+        uint256 index = user.index;
+        users[index] = users[users.length - 1];
+        users.pop();
+        delete isParticipant[account];
         
         pool.stakingToken.safeTransfer(address(msg.sender), userAmount);
 
@@ -1256,12 +1254,7 @@ contract BoxTogetherV2 is Ownable, PotController {
         PoolInfo storage pool = poolInfo;
         UserInfo storage user = userInfo[msg.sender];
         pool.stakingToken.safeTransfer(address(msg.sender), user.amount);
-        totalDeposits = totalDeposits.sub(user.amount);
-        
         user.amount = 0;
-        user.index = 0;
-        user.lastMovePotId = 0;
-        
         emit EmergencyWithdraw(msg.sender, user.amount);
     }
 
@@ -1383,7 +1376,7 @@ contract BoxTogetherV2 is Ownable, PotController {
      */
     function preparePotForDraw() external onlyValidState(PotState.Closed) notContract {
         require(block.number > endBlock, "Pot end time waiting!");
-        require(userLength() > 0, "There is no user for draw!");
+        require(usersLength > 0, "There is no user for draw!");
 
         _currentPotState = PotState.Ready;
         
@@ -1401,14 +1394,16 @@ contract BoxTogetherV2 is Ownable, PotController {
 
         _currentPotState = PotState.Dist;
 
-        uint256 userCount = userLength();
-        uint256 winnerCount = Math.min(WINNER_COUNT, userCount);
+        uint256 winnerCount = WINNER_COUNT;
+        if(usersLength > 0) {
+            winnerCount = Math.min(WINNER_COUNT, usersLength);
+        }
 
         _callers.push(msg.sender);
 
         uint256 totalRewards = balanceOfRewards();
-        uint256 callerFee = totalRewards.mul(distributorRewardRatio).div(10000);
-        uint256 fee = totalRewards.mul(feeRatio).div(10000);
+        uint256 callerFee = totalRewards.mul(distributorRewardRatio).div(100).div(100);
+        uint256 fee = totalRewards.mul(feeRatio).div(100).div(100);
         require(callerFee < fee, "Caller Fee must be smaller than fee.");
 
         if(_isSameRewardWithStakingToken()) {
@@ -1435,7 +1430,7 @@ contract BoxTogetherV2 is Ownable, PotController {
             while(_callers.length > 0);
         }
         
-        uint256 rewardPerUser = winnerCount == 0 ? 0 : totalRewards.div(winnerCount);
+        uint256 rewardPerUser = totalRewards.div(winnerCount);
 
         PotInfo memory history;
         history.startBlock = startBlock;
@@ -1443,23 +1438,23 @@ contract BoxTogetherV2 is Ownable, PotController {
         history.totalDeposits = totalDeposits;
         history.date = block.timestamp;
         history.winners = new address[](winnerCount);
-        history.winnerWeights = new uint256[](winnerCount);
+        history.winnerTickets = new uint256[](winnerCount);
         history.rewardPerUser = rewardPerUser;
         history.totalRewards = totalRewards;
         history.totalWeight = totalWeight;
         
         for (uint i = 0; i < winnerCount; i++) {
             uint rn = uint256(keccak256(abi.encode(_randomness[potId], i))).mod(totalWeight);
-            (address selected, uint weight) = draw(_treeKey, rn);
+            (address selected, uint weight) = draw(_getTreeKey(), rn);
             poolInfo.rewardToken.safeTransfer(selected, rewardPerUser);
             
             history.winners[i] = selected;
-            history.winnerWeights[i] = weight;
+            history.winnerTickets[i] = weight;
         }
         _histories[potId] = history;
 
         emit DrawRewardsDistributed(potId, history.winners);
-         
+
         // Open new pot after distribute
         if(_openNow) {
             _openNewPot();
@@ -1479,46 +1474,44 @@ contract BoxTogetherV2 is Ownable, PotController {
         startBlock = block.number;
         endBlock = block.number.add(potBlockHeight);
         potId = potId + 1;
-        
-        // totalWeight = 0;
-        // createTree(_getTreeKey());
-        
-        for(uint256 i = 0; i < activeUsers.length; i++) {
-            address account = activeUsers[i];
+        usersLength = users.length;
+        totalWeight = 0;
+
+        createTree(_getTreeKey());
+        /*
+        for(uint256 i = 0; i < users.length; i++) {
+            address account = users[i];
+            bytes32 accountID = bytes32(uint256(account));
             UserInfo storage user = userInfo[account];
+            uint256 weight = user.amount.mul(potBlockHeight);
+            totalWeight = totalWeight.add(weight);
             
-            if(user.amount > 0) {
-                // Calculate weight for new pot and move to oldUsers list
-                bytes32 accountID = bytes32(uint256(account));
-                uint256 weight = user.amount.mul(potBlockHeight);
-                uint256 currWeight = getWeight(account);
-                
-                totalWeight = totalWeight.add(weight).sub(currWeight);
-                setWeight(_treeKey, weight, accountID);
-                
-                if(user.index == 0) {
-                    // new user
-                    oldUsers.push(account);
-                    user.index = oldUsers.length;   // set as length for not been zero
-                }
-            }
-            else if(user.index > 0){
-                // old user left the pot
-                oldUsers[user.index-1] = oldUsers[oldUsers.length-1];
-                oldUsers.pop();
-                user.index = 0;
-                
-                bytes32 accountID = bytes32(uint256(account));
-                uint256 currWeight = getWeight(account);
-                
-                totalWeight = totalWeight.sub(currWeight);
-                setWeight(_treeKey, 0, accountID);
-            }
+            setWeight(_getTreeKey(), weight, accountID);
         }
-        
-        delete activeUsers;
-        usersCount = oldUsers.length;
+        */
 
         strategyDeposit(poolInfo, 0);
+    }
+    
+    function needJoin(address account) public view returns(bool) {
+        UserInfo memory user = userInfo[account];
+        uint256 weight = getWeight(account);
+        if(getPotState() == PotState.Open && user.amount > 0 && weight == 0)
+            return true;
+        
+        return false;
+    }
+    
+    function joinCurrentPot() external onlyValidState(PotState.Open) {
+        UserInfo memory user = userInfo[msg.sender];
+        uint256 weight = getWeight(msg.sender);
+        require(user.amount > 0, "You should use deposit!");
+        require(weight == 0, "Already joined current pot!");
+        
+        bytes32 accountID = bytes32(uint256(msg.sender));
+        weight = user.amount.mul(potBlockHeight);
+        totalWeight = totalWeight.add(weight);
+        
+        setWeight(_getTreeKey(), weight, accountID);
     }
 }
