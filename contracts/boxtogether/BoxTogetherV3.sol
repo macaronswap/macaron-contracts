@@ -939,7 +939,6 @@ contract BoxTogetherV2 is Ownable, PotController {
     address[] activeUsers;                  // New Pot participants
     uint256 public WINNER_COUNT = 1;
     uint256 usersCount;
-    uint256 oldTotalWeight;
     
     uint256 public startBlock;              // The block number when pot starts.
     uint256 public endBlock;                // The block number when pot ends.
@@ -952,8 +951,6 @@ contract BoxTogetherV2 is Ownable, PotController {
     uint256 public distributorRewardRatio = 100; // Dist. & Prepare methods caller reward, cut from burn fee :1%
 
     // private vars
-    uint256[] private _usersWillDeleteFromOldList;
-    uint256[] private _usersWillDelete;
     PotState private _currentPotState;
     address[] private _callers;
     bytes32 private _treeKey = keccak256("MacaronSwap/BoxTogether");
