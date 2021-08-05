@@ -829,7 +829,7 @@ contract PotController is IPotController {
     /* ========== CONSTANT ========== */
 
     uint constant private MAX_TREE_LEAVES = 5;
-    IRNGenerator private RNGenerator = IRNGenerator(0x022a45D2649eC65E0654D7c22DC218e69e5BB71B);
+    IRNGenerator private RNGenerator = IRNGenerator(0x83f7e8Cf941d32bEB10EA426A3172FCD1675ea1c);
 
     /* ========== STATE VARIABLES ========== */
 
@@ -878,7 +878,7 @@ contract PotController is IPotController {
     }
 }
 
-contract BoxTogetherV2 is Ownable, PotController {
+contract BoxTogetherV3 is Ownable, PotController {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
 
@@ -935,8 +935,8 @@ contract BoxTogetherV2 is Ownable, PotController {
     mapping (address => UserInfo) public userInfo;  // Info of each user that stakes LP tokens.
     mapping (uint256 => PotInfo) private _histories;
 
-    address[] oldUsers;                     // Old Pot participants
-    address[] activeUsers;                  // New Pot participants
+    address[] public oldUsers;                     // Old Pot participants
+    address[] public activeUsers;                  // New Pot participants
     uint256 public WINNER_COUNT = 1;
     uint256 usersCount;
     
@@ -1058,11 +1058,13 @@ contract BoxTogetherV2 is Ownable, PotController {
 
     // View function to see pending Reward on frontend.
     function pendingTickets(address _user) public view returns (uint256) {
-        require(block.number > startBlock, "Pot is not start yet!");
+        if(block.number < startBlock)
+            return 0;
         
         UserInfo storage user = userInfo[_user];
         uint256 currWeight = getWeight(_user);
-        uint256 subWeight = user.amount.mul(endBlock.sub(block.number));
+        uint256 leftBlock = endBlock.sub(Math.min(endBlock, block.number));
+        uint256 subWeight = user.amount.mul(leftBlock);
         return currWeight.sub(subWeight);
     }
 
@@ -1258,6 +1260,9 @@ contract BoxTogetherV2 is Ownable, PotController {
         user.amount = 0;
         user.index = 0;
         user.lastMovePotId = 0;
+        // reset weight for msg.sender
+        bytes32 _ID = bytes32(uint256(msg.sender));
+        setWeight(_treeKey, 0, _ID);
         
         emit EmergencyWithdraw(msg.sender, user.amount);
     }
@@ -1484,13 +1489,14 @@ contract BoxTogetherV2 is Ownable, PotController {
             address account = activeUsers[i];
             UserInfo storage user = userInfo[account];
             
+            bytes32 accountID = bytes32(uint256(account));
+            uint256 currWeight = getWeight(_treeKey, accountID);
+            totalWeight = totalWeight.sub(currWeight);
+            
             if(user.amount > 0) {
                 // Calculate weight for new pot and move to oldUsers list
-                bytes32 accountID = bytes32(uint256(account));
                 uint256 weight = user.amount.mul(potBlockHeight);
-                uint256 currWeight = getWeight(account);
-                
-                totalWeight = totalWeight.add(weight).sub(currWeight);
+                totalWeight = totalWeight.add(weight);
                 setWeight(_treeKey, weight, accountID);
                 
                 if(user.index == 0) {
@@ -1499,16 +1505,14 @@ contract BoxTogetherV2 is Ownable, PotController {
                     user.index = oldUsers.length;   // set as length for not been zero
                 }
             }
-            else if(user.index > 0){
-                // old user left the pot
-                oldUsers[user.index-1] = oldUsers[oldUsers.length-1];
-                oldUsers.pop();
-                user.index = 0;
+            else {
+                if(user.index > 0) {
+                    // old user left the pot
+                    oldUsers[user.index-1] = oldUsers[oldUsers.length-1];
+                    oldUsers.pop();
+                    user.index = 0;
+                }
                 
-                bytes32 accountID = bytes32(uint256(account));
-                uint256 currWeight = getWeight(account);
-                
-                totalWeight = totalWeight.sub(currWeight);
                 setWeight(_treeKey, 0, accountID);
             }
         }
