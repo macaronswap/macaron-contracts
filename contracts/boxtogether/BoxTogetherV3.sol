@@ -1505,7 +1505,9 @@ contract BoxTogetherV3 is Ownable, PotController {
             else {
                 if(user.index > 0) {
                     // old user left the pot
-                    oldUsers[user.index-1] = oldUsers[oldUsers.length-1];
+                    address lastUser = oldUsers[oldUsers.length-1];
+                    oldUsers[user.index-1] = lastUser;
+                    userInfo[lastUser].index = user.index;
                     oldUsers.pop();
                     user.index = 0;
                 }
