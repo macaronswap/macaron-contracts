@@ -746,7 +746,7 @@ library SortitionSumTreeFactory {
         }
     }
 
-    function draw(SortitionSumTrees storage self, bytes32 _key, uint _drawnNumber) public returns (bytes32 ID, uint weight) {
+    function draw(SortitionSumTrees storage self, bytes32 _key, uint _drawnNumber) public view returns (bytes32 ID, uint weight) {
         SortitionSumTree storage tree = self.sortitionSumTrees[_key];
         uint treeIndex = 0;
         uint currentDrawnNumber = _drawnNumber % tree.nodes[0];
@@ -765,7 +765,6 @@ library SortitionSumTreeFactory {
 
         ID = tree.nodeIndexesToIDs[treeIndex];
         weight = tree.nodes[treeIndex];
-        tree.nodes[treeIndex] = 0;
     }
 
     function stakeOf(SortitionSumTrees storage self, bytes32 _key, bytes32 _ID) public view returns (uint value) {
@@ -860,7 +859,7 @@ contract PotController is IPotController {
         _sortitionSumTree.set(key, weight, _ID);
     }
 
-    function draw(bytes32 key, uint randomNumber) internal returns (address, uint) {
+    function draw(bytes32 key, uint randomNumber) internal view returns (address, uint) {
         (bytes32 ID, uint weight) = _sortitionSumTree.draw(key, randomNumber);
         return (address(uint(ID)), weight);
     }
@@ -1482,15 +1481,13 @@ contract BoxTogetherV3 is Ownable, PotController {
         endBlock = block.number.add(potBlockHeight);
         potId = potId + 1;
         
-        // totalWeight = 0;
-        // createTree(_getTreeKey());
-        
         for(uint256 i = 0; i < activeUsers.length; i++) {
             address account = activeUsers[i];
             UserInfo storage user = userInfo[account];
             
             bytes32 accountID = bytes32(uint256(account));
-            uint256 currWeight = getWeight(_treeKey, accountID);
+            uint256 currWeight = getWeight(account);
+
             totalWeight = totalWeight.sub(currWeight);
             
             if(user.amount > 0) {
