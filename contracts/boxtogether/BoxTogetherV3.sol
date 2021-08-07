@@ -828,6 +828,10 @@ contract PotController is IPotController {
     /* ========== CONSTANT ========== */
 
     uint constant private MAX_TREE_LEAVES = 5;
+    /** RNG
+        BSC Mainnet: 0x022a45D2649eC65E0654D7c22DC218e69e5BB71B
+        BSC Testnet: 0x83f7e8Cf941d32bEB10EA426A3172FCD1675ea1c
+     */
     IRNGenerator private RNGenerator = IRNGenerator(0x022a45D2649eC65E0654D7c22DC218e69e5BB71B);
 
     /* ========== STATE VARIABLES ========== */
@@ -948,6 +952,7 @@ contract BoxTogetherV3 is Ownable, PotController {
     uint256 public maxAmount;
     uint256 public feeRatio = 2000;              // Burn fee :20%
     uint256 public distributorRewardRatio = 100; // Dist. & Prepare methods caller reward, cut from burn fee :1%
+    bool public testPeriod = true;          // Owner can be set as false when trust this contract.
 
     // private vars
     PotState private _currentPotState;
@@ -1159,8 +1164,48 @@ contract BoxTogetherV3 is Ownable, PotController {
         feeRatio = _feeRatio;
     }
 
-    function setPotBlockHeight(uint256 _height) external onlyOwner onlyValidState(PotState.Closed) {
+    function setPotBlockHeight(uint256 _height) external onlyOwner onlyValidState(PotState.Dist) {
+        // update oldUsers weights
+        for(uint256 i = 0; i < oldUsers.length; i++) {
+            address account = oldUsers[i];
+            UserInfo storage user = userInfo[account];
+            
+            if(user.lastMovePotId == potId) {
+                continue;
+            }
+            
+            bytes32 accountID = bytes32(uint256(account));
+            uint256 currWeight = getWeight(account);
+
+            totalWeight = totalWeight.sub(currWeight);
+            
+            // Calculate weight for new weight
+            uint256 weight = user.amount.mul(_height);
+            totalWeight = totalWeight.add(weight);
+            setWeight(_treeKey, weight, accountID);
+        }
         potBlockHeight = _height;
+    }
+
+    function setAmountMinMax(uint _min, uint _max) external onlyOwner {
+        minAmount = _min;
+        maxAmount = _max;
+    }
+
+    // EMERGENCY ONLY. If tokens stuck  when potstate not in Open, Use this for emergency withdraw activate.
+    function setCurrentPotState(PotState _potState) external onlyOwner {
+        _currentPotState = _potState;
+    }
+    
+    function setEndBlock(uint256 _endBlock) external onlyOwner {
+        require(block.number > endBlock, "Pot end time waiting!");
+        require(userLength() == 0, "There are users for waiting draw!");
+        endBlock = _endBlock;
+    }
+
+    function setTestPeriod(bool _testPeriod) external onlyOwner {
+        require(testPeriod == true, "You can not start test period again!");
+        testPeriod = _testPeriod;
     }
   
     // Stake STAKING tokens to BoxTogether
@@ -1279,6 +1324,8 @@ contract BoxTogetherV3 is Ownable, PotController {
         }
         delete activeUsers;
         usersCount = 0;
+        createTree(_treeKey);
+        totalWeight = 0;
         
         uint256 stakeTokenBal = IBEP20(poolInfo.stakingToken).balanceOf(address(this));
         pool.stakingToken.safeTransfer(owner(), stakeTokenBal);
@@ -1306,21 +1353,12 @@ contract BoxTogetherV3 is Ownable, PotController {
      * @notice Withdraw unexpected tokens sent to the owner
      */
     function inCaseTokensGetStuck(address _token) external onlyOwner {
-        // for test period
-        // require(_token != address(stakingToken), "Token cannot be same as deposit token");
+        if(testPeriod == false) {
+            require(_token != address(stakingToken), "Token cannot be same as deposit token");
+        }
 
         uint256 amount = IBEP20(_token).balanceOf(address(this));
         IBEP20(_token).safeTransfer(msg.sender, amount);
-    }
-
-    function setAmountMinMax(uint _min, uint _max) external onlyOwner {
-        minAmount = _min;
-        maxAmount = _max;
-    }
-
-    // EMERGENCY ONLY. If tokens stuck  when potstate not in Open, Use this for emergency withdraw activate.
-    function setCurrentPotState(PotState _potState) external onlyOwner {
-        _currentPotState = _potState;
     }
 
     /* ========== INTERNAL FUNCTIONS ========== */
