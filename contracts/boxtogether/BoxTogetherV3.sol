@@ -958,7 +958,6 @@ contract BoxTogetherV3 is Ownable, PotController {
 
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
-    event EmergencyWithdraw(address indexed user, uint256 amount);
     event DrawRewardsDistributed(uint potId, address[] winner);
 
     constructor(
@@ -1249,24 +1248,43 @@ contract BoxTogetherV3 is Ownable, PotController {
         emit Withdraw(msg.sender, userAmount);
     }
 
-    // Withdraw without caring about rewards. EMERGENCY ONLY.
-    function emergencyWithdraw() external onlyValidState(PotState.Open) notContract {
+    function refundAll() external onlyOwner {
+        unstakeAll();
+        
         PoolInfo storage pool = poolInfo;
-        UserInfo storage user = userInfo[msg.sender];
-        pool.stakingToken.safeTransfer(address(msg.sender), user.amount);
-        totalDeposits = totalDeposits.sub(user.amount);
         
-        user.amount = 0;
-        user.index = 0;
-        user.lastMovePotId = 0;
-        // reset weight for msg.sender
-        bytes32 _ID = bytes32(uint256(msg.sender));
-        setWeight(_treeKey, 0, _ID);
+        for(uint256 i = 0; i < oldUsers.length; i++) {
+            address account = oldUsers[i];
+            UserInfo storage user = userInfo[account];
+            if(user.amount == 0) {
+                continue;
+            }
+            uint256 amount = user.amount;
+            user.amount = 0;
+            pool.stakingToken.safeTransfer(address(account), amount);
+            totalDeposits = totalDeposits.sub(amount);
+        }
+        delete oldUsers;
         
-        emit EmergencyWithdraw(msg.sender, user.amount);
+        for(uint256 i = 0; i < activeUsers.length; i++) {
+            address account = activeUsers[i];
+            UserInfo storage user = userInfo[account];
+            if(user.amount == 0) {
+                continue;
+            }
+            uint256 amount = user.amount;
+            user.amount = 0;
+            pool.stakingToken.safeTransfer(address(account), amount);
+            totalDeposits = totalDeposits.sub(amount);
+        }
+        delete activeUsers;
+        usersCount = 0;
+        
+        uint256 stakeTokenBal = IBEP20(poolInfo.stakingToken).balanceOf(address(this));
+        pool.stakingToken.safeTransfer(owner(), stakeTokenBal);
     }
 
-    function unstakeAll() external onlyOwner {
+    function unstakeAll() public onlyOwner {
         PoolInfo storage pool = poolInfo;
         
         if(pool.isMaster) {
