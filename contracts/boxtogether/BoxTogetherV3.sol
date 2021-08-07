@@ -828,9 +828,9 @@ contract PotController is IPotController {
     /* ========== CONSTANT ========== */
 
     uint constant private MAX_TREE_LEAVES = 5;
-    /** RNG
-        BSC Mainnet: 0x022a45D2649eC65E0654D7c22DC218e69e5BB71B
-        BSC Testnet: 0x83f7e8Cf941d32bEB10EA426A3172FCD1675ea1c
+    /**  @dev RNG
+      *  BSC Mainnet: 0x022a45D2649eC65E0654D7c22DC218e69e5BB71B
+      *  BSC Testnet: 0x83f7e8Cf941d32bEB10EA426A3172FCD1675ea1c
      */
     IRNGenerator private RNGenerator = IRNGenerator(0x022a45D2649eC65E0654D7c22DC218e69e5BB71B);
 
