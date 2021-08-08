@@ -304,8 +304,12 @@ contract MacaronSwapMultiSenderv2 is Ownable {
 
         if(token == macaronToken)
             require(token.balanceOf(msg.sender) >= sendAmount.add(txFeeForToken), "insufficient amount");
-        else
+        else {
             require(token.balanceOf(msg.sender) >= sendAmount, "insufficient amount");
+            require(macaronToken.balanceOf(msg.sender) >= txFeeForToken, "insufficient MCRN amount");
+        }
+
+        macaronToken.transferFrom(msg.sender, treasuryAddress, txFeeForToken);
             
         for (uint256 j = 0; j < _to.length; j++) {
             token.transferFrom(msg.sender, _to[j], _value[j]);
