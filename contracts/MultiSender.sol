@@ -172,7 +172,7 @@ contract MacaronSwapMultiSenderv2 is Ownable {
     address payable public treasuryAddress;
     uint public txFee = 1 ether;
     uint public txFeeForToken = 0.1 ether;
-    uint public minHodlAmount = 100 ether;
+    uint public minHodlAmount = 0 ether;
 
     uint public maxToCountForBNB = 1000;
     uint public maxToCountForToken = 1000;
@@ -211,6 +211,10 @@ contract MacaronSwapMultiSenderv2 is Ownable {
 
     function setTxFee(uint _feeAsBNB) external onlyOwner {
         txFee = _feeAsBNB;
+    }
+
+    function setMinHodl(uint _minHodlAmount) external onlyOwner {
+        minHodlAmount = _minHodlAmount;
     }
     
     function setTxFeeForToken(uint _feeAsMacaron) external onlyOwner {
