@@ -954,6 +954,9 @@ contract BoxTogetherV3 is Ownable, PotController {
     uint256 public distributorRewardRatio = 100; // Dist. & Prepare methods caller reward, cut from burn fee :1%
     bool public testPeriod = true;          // Owner can be set as false when trust this contract.
 
+    uint256 public maxPrepareDrawPartUserLength = 250;
+    uint256 public prepareDrawPart = 0;
+
     // private vars
     PotState private _currentPotState;
     address[] private _callers;
@@ -1190,6 +1193,10 @@ contract BoxTogetherV3 is Ownable, PotController {
     function setAmountMinMax(uint _min, uint _max) external onlyOwner {
         minAmount = _min;
         maxAmount = _max;
+    }
+
+    function setPrepareDrawPartUserLength(uint256 _length) external onlyOwner {
+        maxPrepareDrawPartUserLength = _length;
     }
 
     // EMERGENCY ONLY. If tokens stuck  when potstate not in Open, Use this for emergency withdraw activate.
@@ -1524,20 +1531,26 @@ contract BoxTogetherV3 is Ownable, PotController {
     }
 
     // For stuck cases
-    function openNewPot() external onlyOwner {
+    function openNewPot() external {
         _openNewPot();
     }
 
     /**
-     * @notice Open new pot
+     * @notice Calculate active users weight for next pot and enable deposit and wd functions.
      */
     function _openNewPot() private onlyValidState(PotState.Dist)  {
-        _currentPotState = PotState.Open;
-        startBlock = block.number;
-        endBlock = block.number.add(potBlockHeight);
-        potId = potId + 1;
-        
-        for(uint256 i = 0; i < activeUsers.length; i++) {
+        uint256 startIndex = maxPrepareDrawPartUserLength.mul(prepareDrawPart);
+        uint256 endIndex = Math.min(maxPrepareDrawPartUserLength.add(startIndex), activeUsers.length);
+        prepareDrawPart = prepareDrawPart + 1;
+        if(endIndex == activeUsers.length) {
+            _currentPotState = PotState.Open;
+            startBlock = block.number;
+            endBlock = block.number.add(potBlockHeight);
+            potId = potId + 1;
+            prepareDrawPart = 0;
+        }
+
+        for(uint256 i = startIndex; i < endIndex; i++) {
             address account = activeUsers[i];
             UserInfo storage user = userInfo[account];
             
@@ -1572,9 +1585,11 @@ contract BoxTogetherV3 is Ownable, PotController {
             }
         }
         
-        delete activeUsers;
-        usersCount = oldUsers.length;
+        if(endIndex == activeUsers.length) {
+            delete activeUsers;
+            usersCount = oldUsers.length;
 
-        strategyDeposit(poolInfo, 0);
+            strategyDeposit(poolInfo, 0);
+        }
     }
 }
