@@ -299,7 +299,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     uint256 public burnAmountForWhitelist = 1 ether;
     
     // Address where funds are collected
-    address payable public fundWallet;
+    address public fundWallet;
 
     uint256 public tokenPerLPToken;   // token per lp token
 
@@ -407,16 +407,24 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
       return whitelist[participant];
     }
     
-    /* ========== EXTERNAL & PUBLIC FUNCTIONS ========== */
-
-    function setEndBlock(uint256 _endBlock) external onlyOwner {
-        require(startBlock < _endBlock, "endBlock can not be greater than startBlock");
-        endBlock = _endBlock;
+    /**
+     * @dev Checks the amount of tokens left in the allowance.
+     * @return Amount of tokens left in the allowance
+     */
+    function remainingTokens() public view returns (uint256) {
+        return tokenAmountForSale.sub(soldTokenAmount);
     }
     
+    /* ========== EXTERNAL & PUBLIC FUNCTIONS ========== */
+
     function setStartBlock(uint256 _startBlock) external onlyOwner {
         require(_startBlock < endBlock, "startBlock can not be lower than endBlock");
         startBlock = _startBlock;
+    }
+    
+    function setEndBlock(uint256 _endBlock) external onlyOwner {
+        require(startBlock < _endBlock, "endBlock can not be greater than startBlock");
+        endBlock = _endBlock;
     }
     
     function setReleaseBlock(uint256 _releaseBlock) external onlyOwner {
@@ -426,6 +434,20 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     
     function setReleasedPercent(uint256 _releasedPercent) external onlyOwner {
         releasedPercent = _releasedPercent;
+    }
+    
+    function setFundWallet(address _fundWallet) external onlyOwner {
+        fundWallet = _fundWallet;
+    }
+    
+    function setOfferingToken(IERC20 _offeringToken) external onlyOwner {
+        require(block.number > startBlock, "IFO has been started!");
+        offeringToken = _offeringToken;
+    }
+    
+    function setLpToken(IERC20 _lpToken) external onlyOwner {
+        require(block.number > startBlock, "IFO has been started!");
+        lpToken = _lpToken;
     }
 
     /**
@@ -473,14 +495,6 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     }
     
     /**
-     * @dev Checks the amount of tokens left in the allowance.
-     * @return Amount of tokens left in the allowance
-     */
-    function remainingTokens() public view returns (uint256) {
-        return tokenAmountForSale.sub(soldTokenAmount);
-    }
-
-    /**
      * @dev low level token purchase ***DO NOT OVERRIDE***
      * This function has a non-reentrancy guard, so it shouldn't be called by
      * another `nonReentrant` function.
@@ -507,7 +521,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
         require(remainingCapAllocation >= _amount, "Your remaining allocation is not enough.");
         
         // Transfers funds to this contract
-        lpToken.safeTransferFrom(address(msg.sender), address(this), _amount);
+        lpToken.safeTransferFrom(address(msg.sender), fundWallet, _amount);
         
         // update state
         raisedLPT = raisedLPT.add(_amount);
