@@ -312,9 +312,14 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     mapping (address => bool) whitelist;
     address[] whitelistedAddresses;
     
-    mapping (address => uint256) usedCAPAmount;
-    mapping (address => uint256) purchasedTokenAmount;
-    mapping (address => uint256) claimedTokenAmount;
+    mapping (address => UserInfo) _userInfo;
+    
+    // Struct that contains each user information
+    struct UserInfo {
+        uint256 usedCAPAmount;
+        uint256 purchasedTokenAmount;
+        uint256 claimedTokenAmount;
+    }
     
     uint256 public minCapPerUser = 100000000000000000;
     uint256 public maxCapPerUser = 20000000000000000000;
@@ -375,12 +380,14 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     }
 
     function unclaimedToken(address _address) external view returns (uint256) {
-        return purchasedTokenAmount[_address].sub(claimedTokenAmount[_address]);
+        UserInfo memory user = _userInfo[_address];
+        return user.purchasedTokenAmount.sub(user.claimedTokenAmount);
     }
     
     function claimableToken(address _address) public view returns (uint256) {
-        uint256 purchased = purchasedTokenAmount[_address];
-        uint256 claimed = claimedTokenAmount[_address];
+        UserInfo memory user = _userInfo[_address];
+        uint256 purchased = user.purchasedTokenAmount;
+        uint256 claimed = user.claimedTokenAmount;
         uint256 claimable = purchased.mul(releasedPercent).div(100).sub(claimed);
         return claimable;
     }
@@ -400,16 +407,17 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
         return result;        
     }
     
-    function getRemainingCapAllocation(address beneficiary) public view returns (uint256) {
-        uint256 remainingCAPAllocation = maxCapPerUser - usedCAPAmount[beneficiary];
+    function getRemainingCapAllocation(address _address) public view returns (uint256) {
+        UserInfo memory user = _userInfo[_address];
+        uint256 remainingCAPAllocation = maxCapPerUser.sub(user.usedCAPAmount);
         return remainingCAPAllocation;
     }
     
     /**
      * Returns 'true' if address in whitelist
      */
-    function isWhitelisted(address participant) external view returns (bool) {
-      return whitelist[participant];
+    function isWhitelisted(address _address) external view returns (bool) {
+      return whitelist[_address];
     }
     
     /**
@@ -507,12 +515,13 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
      */
     function deposit(uint256 _amount) external nonReentrant {
         require(isSaleActive(), "Sale is not active!");
-
-        address beneficiary = msg.sender;
+        address account = msg.sender;
         //check whitelist
-        require(whitelist[beneficiary] == true, "You are not whitelisted for this IFO!");
+        require(whitelist[account] == true, "You are not whitelisted for this IFO!");
         require(_amount != 0, "Crowdsale: amount can't be 0");
-        if(usedCAPAmount[beneficiary] == 0) {
+        
+        UserInfo memory user = _userInfo[account];
+        if(user.usedCAPAmount == 0) {
           require(_amount >= minCapPerUser, "Amount can't be lower than mincap!");
         }
 
@@ -520,7 +529,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
         uint256 tokens = getTokenAmount(_amount);
         require(remainingTokens() >= tokens, "IFO hardcap reached!");
 
-        uint256 remainingCapAllocation = getRemainingCapAllocation(beneficiary);
+        uint256 remainingCapAllocation = getRemainingCapAllocation(account);
         // max buyable amount check
         require(remainingCapAllocation > 0, "Your remaining allocation is over.");
         require(remainingCapAllocation >= _amount, "Your remaining allocation is not enough.");
@@ -531,15 +540,17 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
         // update state
         raisedLPT = raisedLPT.add(_amount);
         soldTokenAmount = soldTokenAmount.add(tokens);
-        purchasedTokenAmount[beneficiary] = purchasedTokenAmount[beneficiary].add(tokens);
-        usedCAPAmount[beneficiary] = usedCAPAmount[beneficiary].add(_amount);
+        user.purchasedTokenAmount = user.purchasedTokenAmount.add(tokens);
+        user.usedCAPAmount = user.usedCAPAmount.add(_amount);
         
-        emit TokensPurchased(beneficiary, _amount, tokens);
+        emit TokensPurchased(account, _amount, tokens);
     }
     
     function claim() external nonReentrant {
         require(!isSaleActive(), "Sale is still active!");
-        require(purchasedTokenAmount[msg.sender] > 0, "You did not participate this IFO!");
+        address account = msg.sender;
+        UserInfo memory user = _userInfo[account];
+        require(user.purchasedTokenAmount > 0, "You did not participate this IFO!");
         
         uint256 claimable = claimableToken(msg.sender);
         require(claimable > 0, "You have not claimable amount!");
