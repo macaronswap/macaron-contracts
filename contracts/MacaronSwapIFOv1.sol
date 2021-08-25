@@ -312,7 +312,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     mapping (address => bool) whitelist;
     address[] whitelistedAddresses;
     
-    mapping (address => UserInfo) _userInfo;
+    mapping (address => UserInfo) public userInfo;
     
     // Struct that contains each user information
     struct UserInfo {
@@ -380,12 +380,12 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     }
 
     function unclaimedToken(address _address) external view returns (uint256) {
-        UserInfo memory user = _userInfo[_address];
+        UserInfo memory user = userInfo[_address];
         return user.purchasedTokenAmount.sub(user.claimedTokenAmount);
     }
     
     function claimableToken(address _address) public view returns (uint256) {
-        UserInfo memory user = _userInfo[_address];
+        UserInfo memory user = userInfo[_address];
         uint256 purchased = user.purchasedTokenAmount;
         uint256 claimed = user.claimedTokenAmount;
         uint256 claimable = purchased.mul(releasedPercent).div(100).sub(claimed);
@@ -408,7 +408,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     }
     
     function getRemainingCapAllocation(address _address) public view returns (uint256) {
-        UserInfo memory user = _userInfo[_address];
+        UserInfo memory user = userInfo[_address];
         uint256 remainingCAPAllocation = maxCapPerUser.sub(user.usedCAPAmount);
         return remainingCAPAllocation;
     }
@@ -431,12 +431,12 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     /* ========== EXTERNAL & PUBLIC FUNCTIONS ========== */
 
     function setStartBlock(uint256 _startBlock) external onlyOwner {
-        require(_startBlock < endBlock, "startBlock can not be lower than endBlock");
+        require(_startBlock < endBlock, "startBlock can not be greater than endBlock");
         startBlock = _startBlock;
     }
     
     function setEndBlock(uint256 _endBlock) external onlyOwner {
-        require(startBlock < _endBlock, "endBlock can not be greater than startBlock");
+        require(startBlock < _endBlock, "endBlock can not be lower than startBlock");
         endBlock = _endBlock;
     }
     
@@ -520,7 +520,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
         require(whitelist[account] == true, "You are not whitelisted for this IFO!");
         require(_amount != 0, "Crowdsale: amount can't be 0");
         
-        UserInfo memory user = _userInfo[account];
+        UserInfo memory user = userInfo[account];
         if(user.usedCAPAmount == 0) {
           require(_amount >= minCapPerUser, "Amount can't be lower than mincap!");
         }
@@ -549,7 +549,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     function claim() external nonReentrant {
         require(!isSaleActive(), "Sale is still active!");
         address account = msg.sender;
-        UserInfo memory user = _userInfo[account];
+        UserInfo memory user = userInfo[account];
         require(user.purchasedTokenAmount > 0, "You did not participate this IFO!");
         
         uint256 claimable = claimableToken(msg.sender);
