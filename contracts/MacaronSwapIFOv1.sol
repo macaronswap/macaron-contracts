@@ -467,6 +467,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
      * @notice Burn 1 MCRN and join whitelist
      */
     function joinWhitelist() external {
+        require(block.number > endBlock, "IFO duration finished!");
         macaron.safeTransferFrom(msg.sender, burnAddress, burnAmountForWhitelist);
         whitelist[msg.sender] = true;
     }
@@ -487,13 +488,18 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
      */
     function deposit(uint256 _amount) external nonReentrant {
         require(isSaleActive(), "Sale is not active!");
-        
+
         address beneficiary = msg.sender;
         //check whitelist
         require(whitelist[beneficiary] == true, "You are not whitelisted for this IFO!");
-        
-        require(beneficiary != address(0), "Crowdsale: beneficiary is the zero address");
-        require(_amount != 0, "Crowdsale: weiAmount is 0");
+        require(_amount != 0, "Crowdsale: amount can't be 0");
+        if(usedCAPAmount[beneficiary] == 0) {
+          require(_amount >= minCapPerUser, "Amount can't be lower than mincap!");
+        }
+
+        // calculate token amount to be created
+        uint256 tokens = getTokenAmount(_amount);
+        require(remainingTokens() >= tokens, "IFO hardcap reached!");
 
         uint256 remainingCapAllocation = getRemainingCapAllocation(beneficiary);
         // max buyable amount check
@@ -503,8 +509,6 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
         // Transfers funds to this contract
         lpToken.safeTransferFrom(address(msg.sender), address(this), _amount);
         
-        // calculate token amount to be created
-        uint256 tokens = getTokenAmount(_amount);
         // update state
         raisedLPT = raisedLPT.add(_amount);
         soldTokenAmount = soldTokenAmount.add(tokens);
