@@ -310,6 +310,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     
     //Whitelisted addresses
     mapping (address => bool) whitelist;
+    address[] whitelistedAddresses;
     
     mapping (address => uint256) usedCAPAmount;
     mapping (address => uint256) purchasedTokenAmount;
@@ -382,6 +383,10 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
         uint256 claimed = claimedTokenAmount[_address];
         uint256 claimable = purchased.mul(releasedPercent).div(100).sub(claimed);
         return claimable;
+    }
+    
+    function getWhitelistedCount() external view returns (uint256) {
+        return whitelistedAddresses.length;
     }
     
     /**
