@@ -287,7 +287,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     using SafeERC20 for IERC20;
 
     // The token being sold
-    IERC20 public token;
+    IERC20 public offeringToken;
     // The token used to buy
     IERC20 public lpToken;
     
@@ -300,7 +300,6 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     
     // Address where funds are collected
     address payable public fundWallet;
-    address private tokenWallet;
 
     uint256 public tokenPerLPToken;   // token per lp token
 
@@ -325,26 +324,32 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
 
     /**
      * Event for token purchase logging
-     * @param purchaser who paid for the tokens
      * @param beneficiary who got the tokens
      * @param value weis paid for purchase
      * @param amount amount of tokens purchased
      */
-    event TokensPurchased(address indexed purchaser, address indexed beneficiary, uint256 value, uint256 amount);
+    event TokensPurchased(address indexed beneficiary, uint256 value, uint256 amount);
+    
+    // Admin withdraw events
+    event AdminWithdraw(uint256 amountLP, uint256 amountOfferingToken);
+
+    // Admin recovers token
+    event AdminTokenRecovery(address tokenAddress, uint256 amountTokens);
 
     /**
      * @param _fundWallet Address where collected funds will be forwarded to
      * @param _tokenPerLPToken How much token give away per LPT
-     * @param _token Address of the token being sold
+     * @param _offeringToken Address of the token being sold
      */
-    constructor (address _tokenWallet, address payable _fundWallet, IERC20 _token, IERC20 _lpToken, IERC20 _macaron, uint256 _tokenPerLPToken, uint256 _tokenAmountForSale, uint256 _startBlock, uint256 _endBlock, uint256 _releaseBlock) public {
+    constructor (address payable _fundWallet, IERC20 _offeringToken, IERC20 _lpToken, IERC20 _macaron, uint256 _tokenPerLPToken, uint256 _tokenAmountForSale, uint256 _startBlock, uint256 _endBlock, uint256 _releaseBlock) public {
         require(_fundWallet != address(0), "Crowdsale: wallet is the zero address");
-        require(address(_token) != address(0), "Crowdsale: token is the zero address");
-        require(_tokenWallet != address(0), "MacaronCrowdsale: token wallet is the zero address");
-        tokenWallet = _tokenWallet;
+        require(address(_offeringToken) != address(0), "Crowdsale: token is the zero address");
+        require(_lpToken.totalSupply() >= 0);
+        require(_offeringToken.totalSupply() >= 0);
+        require(_lpToken != _offeringToken, "Tokens must be be different");
         
         fundWallet = _fundWallet;
-        token = _token;
+        offeringToken = _offeringToken;
         lpToken = _lpToken;
         macaron = _macaron;
         tokenPerLPToken = _tokenPerLPToken;
@@ -471,16 +476,16 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
      * @return Amount of tokens left in the allowance
      */
     function remainingTokens() public view returns (uint256) {
-        return Math.min(token.balanceOf(tokenWallet), token.allowance(tokenWallet, address(this)));
+        return tokenAmountForSale.sub(soldTokenAmount);
     }
 
     /**
      * @dev low level token purchase ***DO NOT OVERRIDE***
      * This function has a non-reentrancy guard, so it shouldn't be called by
      * another `nonReentrant` function.
-     * @param weiAmount depositted LPT amount
+     * @param _amount depositted LPT amount
      */
-    function deposit(uint256 weiAmount) external nonReentrant {
+    function deposit(uint256 _amount) external nonReentrant {
         require(isSaleActive(), "Sale is not active!");
         
         address beneficiary = msg.sender;
@@ -488,22 +493,25 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
         require(whitelist[beneficiary] == true, "You are not whitelisted for this IFO!");
         
         require(beneficiary != address(0), "Crowdsale: beneficiary is the zero address");
-        require(weiAmount != 0, "Crowdsale: weiAmount is 0");
+        require(_amount != 0, "Crowdsale: weiAmount is 0");
 
         uint256 remainingCapAllocation = getRemainingCapAllocation(beneficiary);
         // max buyable amount check
         require(remainingCapAllocation > 0, "Your remaining allocation is over.");
-        require(remainingCapAllocation >= weiAmount, "Your remaining allocation is not enough.");
+        require(remainingCapAllocation >= _amount, "Your remaining allocation is not enough.");
+        
+        // Transfers funds to this contract
+        lpToken.safeTransferFrom(address(msg.sender), address(this), _amount);
         
         // calculate token amount to be created
-        uint256 tokens = getTokenAmount(weiAmount);
+        uint256 tokens = getTokenAmount(_amount);
         // update state
-        raisedLPT = raisedLPT.add(weiAmount);
+        raisedLPT = raisedLPT.add(_amount);
         soldTokenAmount = soldTokenAmount.add(tokens);
         purchasedTokenAmount[beneficiary] = purchasedTokenAmount[beneficiary].add(tokens);
-        usedCAPAmount[beneficiary] = usedCAPAmount[beneficiary] + weiAmount;
+        usedCAPAmount[beneficiary] = usedCAPAmount[beneficiary].add(_amount);
         
-        emit TokensPurchased(msg.sender, beneficiary, weiAmount, tokens);
+        emit TokensPurchased(beneficiary, _amount, tokens);
     }
     
     function claim() external nonReentrant {
@@ -512,6 +520,29 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
         
         uint256 claimable = claimableToken(msg.sender);
         require(claimable > 0, "You have not claimable amount!");
-        token.transferFrom(tokenWallet, msg.sender, claimable);
+        offeringToken.safeTransfer(msg.sender, claimable);
+    }
+    
+    function finalWithdraw(uint256 _lpAmount, uint256 _offerAmount) external onlyOwner {
+        require(!isSaleActive(), "Sale is still active!");
+        require(_lpAmount <= lpToken.balanceOf(address(this)), "Not enough LP tokens");
+        require(_offerAmount <= offeringToken.balanceOf(address(this)), "Not enough offering token");
+
+        if (_lpAmount > 0) {
+            lpToken.safeTransfer(address(msg.sender), _lpAmount);
+        }
+
+        if (_offerAmount > 0) {
+            offeringToken.safeTransfer(address(msg.sender), _offerAmount);
+        }
+
+        emit AdminWithdraw(_lpAmount, _offerAmount);
+    }
+    
+    function recoverWrongTokens(address _tokenAddress, uint256 _tokenAmount) external onlyOwner {
+        require(_tokenAddress != address(lpToken), "Cannot be LP token");
+        require(_tokenAddress != address(offeringToken), "Cannot be offering token");
+
+        IERC20(_tokenAddress).safeTransfer(address(msg.sender), _tokenAmount);
     }
 }
