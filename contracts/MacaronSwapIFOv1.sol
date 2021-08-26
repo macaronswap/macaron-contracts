@@ -502,7 +502,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
      * @notice Burn 1 MCRN and join whitelist
      */
     function joinWhitelist() external {
-        require(block.number > endBlock, "IFO duration finished!");
+        require(block.number < endBlock, "IFO duration finished!");
         macaron.safeTransferFrom(msg.sender, burnAddress, burnAmountForWhitelist);
         whitelist[msg.sender] = true;
     }
