@@ -505,6 +505,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
         require(block.number < endBlock, "IFO duration finished!");
         macaron.safeTransferFrom(msg.sender, burnAddress, burnAmountForWhitelist);
         whitelist[msg.sender] = true;
+        whitelistedAddresses.push(msg.sender);
     }
     
     /**
