@@ -295,8 +295,8 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     IERC20 public macaron;
     
     address public burnAddress = 0x000000000000000000000000000000000000dEaD;
-    
     uint256 public burnAmountForWhitelist = 1 ether;
+    uint256 public burnedTotal;
     
     // Address where funds are collected
     address public fundWallet;
@@ -506,6 +506,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
         macaron.safeTransferFrom(msg.sender, burnAddress, burnAmountForWhitelist);
         whitelist[msg.sender] = true;
         whitelistedAddresses.push(msg.sender);
+        burnedTotal = burnedTotal.add(burnAmountForWhitelist);
     }
     
     /**
