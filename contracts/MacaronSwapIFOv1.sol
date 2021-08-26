@@ -454,12 +454,10 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     }
     
     function setOfferingToken(IERC20 _offeringToken) external onlyOwner {
-        require(block.number > startBlock, "IFO has been started!");
         offeringToken = _offeringToken;
     }
     
     function setLpToken(IERC20 _lpToken) external onlyOwner {
-        require(block.number > startBlock, "IFO has been started!");
         lpToken = _lpToken;
     }
 
@@ -467,11 +465,15 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
      * @param _tokenPerLPToken How much tokens worth equals 1 LPT
      */
     function updatetokenPerLPToken(uint256 _tokenPerLPToken) external onlyOwner {
-      tokenPerLPToken = _tokenPerLPToken;
+        tokenPerLPToken = _tokenPerLPToken;
+    }
+
+    function updatetokenAmountForSale(uint256 _tokenAmountForSaleWei) external onlyOwner {
+        tokenAmountForSale = _tokenAmountForSaleWei;
     }
     
     function updateBurnAmountForWhitelisting(uint256 _burnAmountForWhitelist) external onlyOwner {
-      burnAmountForWhitelist = _burnAmountForWhitelist;
+        burnAmountForWhitelist = _burnAmountForWhitelist;
     }
     
     function updateBurnAddress(address _burnAddress) external onlyOwner {
