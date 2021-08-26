@@ -347,7 +347,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
      * @param _tokenPerLPToken How much token give away per LPT
      * @param _offeringToken Address of the token being sold
      */
-    constructor (address payable _fundWallet, IERC20 _offeringToken, IERC20 _lpToken, IERC20 _macaron, uint256 _tokenPerLPToken, uint256 _tokenAmountForSale, uint256 _startBlock, uint256 _endBlock, uint256 _releaseBlock) public {
+    constructor (address _fundWallet, IERC20 _offeringToken, IERC20 _lpToken, IERC20 _macaron, uint256 _tokenPerLPToken, uint256 _tokenAmountForSaleInWei, uint256 _startBlock, uint256 _endBlock, uint256 _releaseBlock) public {
         require(_fundWallet != address(0), "Crowdsale: wallet is the zero address");
         require(address(_offeringToken) != address(0), "Crowdsale: token is the zero address");
         require(_lpToken.totalSupply() >= 0);
@@ -359,7 +359,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
         lpToken = _lpToken;
         macaron = _macaron;
         tokenPerLPToken = _tokenPerLPToken;
-        tokenAmountForSale = _tokenAmountForSale;
+        tokenAmountForSale = _tokenAmountForSaleInWei;
         
         // Set saleDuration
         startBlock = _startBlock;
@@ -380,12 +380,12 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     }
 
     function unclaimedToken(address _address) external view returns (uint256) {
-        UserInfo memory user = userInfo[_address];
+        UserInfo storage user = userInfo[_address];
         return user.purchasedTokenAmount.sub(user.claimedTokenAmount);
     }
     
     function claimableToken(address _address) public view returns (uint256) {
-        UserInfo memory user = userInfo[_address];
+        UserInfo storage user = userInfo[_address];
         uint256 purchased = user.purchasedTokenAmount;
         uint256 claimed = user.claimedTokenAmount;
         uint256 claimable = purchased.mul(releasedPercent).div(100).sub(claimed);
@@ -402,13 +402,13 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
      * @return Number of tokens that can be purchased with the specified _weiAmount
      */
     function getTokenAmount(uint256 weiAmount) public view returns (uint256) {
-        uint256 result = tokenPerLPToken.mul(weiAmount);
+        uint256 result = tokenPerLPToken.mul(weiAmount).div(1e12).mul(1e12);
         require(result > 0, "Less than minimum amount paid");
         return result;        
     }
     
     function getRemainingCapAllocation(address _address) public view returns (uint256) {
-        UserInfo memory user = userInfo[_address];
+        UserInfo storage user = userInfo[_address];
         uint256 remainingCAPAllocation = maxCapPerUser.sub(user.usedCAPAmount);
         return remainingCAPAllocation;
     }
@@ -522,7 +522,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
         require(whitelist[account] == true, "You are not whitelisted for this IFO!");
         require(_amount != 0, "Crowdsale: amount can't be 0");
         
-        UserInfo memory user = userInfo[account];
+        UserInfo storage user = userInfo[account];
         if(user.usedCAPAmount == 0) {
           require(_amount >= minCapPerUser, "Amount can't be lower than mincap!");
         }
@@ -551,11 +551,12 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     function claim() external nonReentrant {
         require(!isSaleActive(), "Sale is still active!");
         address account = msg.sender;
-        UserInfo memory user = userInfo[account];
+        UserInfo storage user = userInfo[account];
         require(user.purchasedTokenAmount > 0, "You did not participate this IFO!");
         
         uint256 claimable = claimableToken(msg.sender);
         require(claimable > 0, "You have not claimable amount!");
+        user.claimedTokenAmount = user.claimedTokenAmount.add(claimable);
         offeringToken.safeTransfer(msg.sender, claimable);
     }
     
