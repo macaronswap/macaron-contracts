@@ -321,8 +321,8 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
         uint256 claimedTokenAmount;
     }
     
-    uint256 public minCapPerUser = 100000000000000000;
-    uint256 public maxCapPerUser = 20000000000000000000;
+    uint256 public minCapPerUser = 81054000000000000;
+    uint256 public maxCapPerUser = 8105400000000000000;
     uint256 public releasedPercent = 0;
     uint256 public releaseBlock;
     uint256 public startBlock;
@@ -402,7 +402,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
      * @return Number of tokens that can be purchased with the specified _weiAmount
      */
     function getTokenAmount(uint256 weiAmount) public view returns (uint256) {
-        uint256 result = tokenPerLPToken.mul(weiAmount).div(1e12).mul(1e12);
+        uint256 result = tokenPerLPToken.div(1e18).mul(weiAmount).div(1e12).mul(1e12);
         require(result > 0, "Less than minimum amount paid");
         return result;        
     }
@@ -429,6 +429,14 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     }
     
     /* ========== EXTERNAL & PUBLIC FUNCTIONS ========== */
+
+    function setMinCapPerUser(uint256 _minCapPerUser) external onlyOwner {
+        minCapPerUser = _minCapPerUser;
+    }
+
+    function setMaxCapPerUser(uint256 _maxCapPerUser) external onlyOwner {
+        maxCapPerUser = _maxCapPerUser;
+    }
 
     function setStartBlock(uint256 _startBlock) external onlyOwner {
         require(_startBlock < endBlock, "startBlock can not be greater than endBlock");
