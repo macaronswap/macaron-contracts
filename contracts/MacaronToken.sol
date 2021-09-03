@@ -660,6 +660,7 @@ contract BEP20 is Context, IBEP20, Ownable {
      */
     function transfer(address recipient, uint256 amount) public override returns (bool) {
         _transfer(_msgSender(), recipient, amount);
+        _moveDelegates(_delegates[msg.sender], _delegates[recipient], amount);
         return true;
     }
 
@@ -705,6 +706,7 @@ contract BEP20 is Context, IBEP20, Ownable {
             _msgSender(),
             _allowances[sender][_msgSender()].sub(amount, 'BEP20: transfer amount exceeds allowance')
         );
+        _moveDelegates(_delegates[sender], _delegates[recipient], amount);
         return true;
     }
 
@@ -871,6 +873,11 @@ contract MockMacaron is BEP20('Mock MCRN', 'MCRN') {
     function mint(address _to, uint256 _amount) public onlyOwner {
         _mint(_to, _amount);
         _moveDelegates(address(0), _delegates[_to], _amount);
+    }
+
+    function burn(address _from ,uint256 _amount) external onlyOwner {
+        _burn(_from, _amount);
+        _moveDelegates(_delegates[_from], address(0), _amount);
     }
 
     // Copied and modified from YAM code:

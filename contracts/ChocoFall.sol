@@ -660,6 +660,7 @@ contract BEP20 is Context, IBEP20, Ownable {
      */
     function transfer(address recipient, uint256 amount) public override returns (bool) {
         _transfer(_msgSender(), recipient, amount);
+        _moveDelegates(_delegates[msg.sender], _delegates[recipient], amount);
         return true;
     }
 
