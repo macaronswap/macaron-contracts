@@ -303,41 +303,74 @@ library SafeMath {
 contract MacaronBridge is Ownable {
   using SafeMath for uint256;
 
-  address private _issuer;
+  mapping(address => bool) public validatorStatus;
 
   IERC20 public token;
   uint public nonce;
-  mapping(string => mapping(uint256 => bool)) public processedNonces;
+  uint256 public minVerify = 1;
+  mapping(string => mapping(uint256 => uint256)) public verifyCount;
+  mapping(string => mapping(uint256 => bool)) public verifiedNonces;
+  mapping(string => mapping(uint256 => address[])) public nonceValidators;
+  
 
   uint256 public minAmount = 1 ether;
   uint256 public maxAmount = 10000 ether;
-  uint256 public feeRatio = 100;      // 100: 1/1000, 1000: 1/100
+  uint256 public feeRatio = 100;      // 100: 0.1%, 1000: 1%
   uint256 _feeBase = 100000;
 
-  enum Step { In, Out }
-  event Transfer(
+  event TransferIn(
     address from,
     address to,
     uint amount,
     uint date,
     uint nonce,
-    string destChain,
-    Step indexed step
+    string destChain
+  );
+  event TransferOut(
+    address from,
+    address to,
+    uint amount,
+    uint date,
+    uint nonce,
+    string srcChain
   );
 
   constructor(address _token) {
-    _issuer = msg.sender;
+    validatorStatus[msg.sender] = true;
     token = IERC20(_token);
   }
 
-  modifier onlyIssuer() {
-      require(_issuer == _msgSender(), 'Issuer: caller is not the issuer');
+  modifier onlyValidator() {
+      require(validatorStatus[_msgSender()] == true, 'Issuer: caller is not the validator');
       _;
   }
-
-  function setIssuer(address _address) external onlyOwner {
-    require(_address != address(0), "Issuer can't be zero address.");
-    _issuer = _address;
+  /**
+    * @notice Checks if the msg.sender is a contract or a proxy
+    */
+    
+  modifier notContract() {
+    require(!_isContract(msg.sender), "contract not allowed");
+    require(msg.sender == tx.origin, "proxy contract not allowed");
+    _;
+  }
+  
+  
+  function _isContract(address addr) internal view returns (bool) {
+    uint256 size;
+    assembly {
+        size := extcodesize(addr)
+    }
+    return size > 0;
+  }
+    
+  function setValidator(address _address, bool _status) external onlyOwner {
+    require(_address != address(0), "Validator can't be zero address.");
+    validatorStatus[_address] = _status;
+  }
+  
+  function setMinVerify(uint256 _verifyCount) external onlyOwner {
+      require(_verifyCount > 0, "Verify count must be greater than zero!");
+      minVerify = _verifyCount;
   }
 
   function setMaxAmount(uint256 _amount) external onlyOwner {
@@ -352,52 +385,57 @@ contract MacaronBridge is Ownable {
     feeRatio = _ratio;
   }
 
-  function enterTheBridge(string calldata _destChain, address _to, uint256 _amount) external {
-    require(_amount > minAmount, "Amount must be greater than min!");
-    require(_amount < maxAmount, "Amount must be lower than max!");
+  function enterTheBridge(string calldata _destChain, address _to, uint256 _amount) external notContract {
+    require(_amount >= minAmount, "Amount must be greater than min!");
+    require(_amount <= maxAmount, "Amount must be lower than max!");
     require(_to != address(0), "Receipent address can't be zero!");
 
     nonce++;
 
     token.transferFrom(msg.sender, address(this), _amount);
 
-    emit Transfer(
+    emit TransferIn(
       msg.sender,
       _to,
       _amount,
       block.timestamp,
       nonce,
-      _destChain,
-      Step.In
+      _destChain
     );
   }
 
-  function exitTheBridge(string calldata _srcChain, uint256 _otherChainNonce, address _from, address _to, uint256 _amount) external onlyIssuer {
-    require(processedNonces[_srcChain][_otherChainNonce] == false, 'transfer already processed');
-    require(_amount > minAmount, "Amount must be greater than min!");
-    require(_amount < maxAmount, "Amount must be lower than max!");
+  function exitTheBridge(string calldata _srcChain, uint256 _otherChainNonce, address _from, address _to, uint256 _amount) external onlyValidator {
+    require(verifiedNonces[_srcChain][_otherChainNonce] == false, 'transfer already processed');
+    require(_amount >= minAmount, "Amount must be greater than min!");
+    require(_amount <= maxAmount, "Amount must be lower than max!");
     require(_to != address(0), "Receipent address can't be zero!");
-
-    processedNonces[_srcChain][_otherChainNonce] = true;
+    
+    nonceValidators[_srcChain][_otherChainNonce].push(msg.sender);
+    verifyCount[_srcChain][_otherChainNonce]++;
+    uint256 _verifyCount = verifyCount[_srcChain][_otherChainNonce];
+    
+    if(_verifyCount < minVerify)
+        return;
+    
+    verifiedNonces[_srcChain][_otherChainNonce] = true;
 
     uint256 fee = _amount.mul(feeRatio).div(_feeBase);
     uint256 amountOut = _amount.sub(fee);
 
     token.transfer(_to, amountOut);
     
-    emit Transfer(
+    emit TransferOut(
       _from,
       _to,
       amountOut,
       block.timestamp,
       _otherChainNonce,
-      _srcChain,
-      Step.Out
+      _srcChain
     );
   }
 
   function recoverWrongTokens(address _tokenAddress) external onlyOwner {
-        uint256 _tokenAmount = IERC20(_tokenAddress).balanceOf(address(this));
-        IERC20(_tokenAddress).transfer(address(msg.sender), _tokenAmount);
-    }
+    uint256 _tokenAmount = IERC20(_tokenAddress).balanceOf(address(this));
+    IERC20(_tokenAddress).transfer(address(msg.sender), _tokenAmount);
+  }
 }
