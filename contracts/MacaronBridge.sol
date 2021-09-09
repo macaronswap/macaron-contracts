@@ -483,6 +483,10 @@ contract MacaronBridge is Ownable {
     require(_amount <= maxAmount, "Amount must be lower than max!");
     require(_to != address(0), "Receipent address can't be zero!");
     
+    for(uint256 i=0; i<nonceValidators[_srcChain][_otherChainNonce].length; i++) {
+        require(nonceValidators[_srcChain][_otherChainNonce][i] != msg.sender, "Same validator can't verify twice!");
+    }
+
     nonceValidators[_srcChain][_otherChainNonce].push(msg.sender);
     verifyCount[_srcChain][_otherChainNonce]++;
     uint256 _verifyCount = verifyCount[_srcChain][_otherChainNonce];
