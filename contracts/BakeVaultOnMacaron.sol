@@ -790,15 +790,15 @@ abstract contract Pausable is Context {
 }
 
 interface IMasterChef {
-    function deposit(address _pair, uint256 _amount) external;
+    function stake(address _pair, uint256 _amount) external;
 
-    function withdraw(address _pair, uint256 _amount) external;
+    function unstake(address _pair, uint256 _amount) external;
 
-    function pendingBake(address _pair, address _user) external view returns (uint256);
+    function pendingToken(address _pair, address _user) external view returns (uint256);
 
     function poolUserInfoMap(address _pair, address _user) external view returns (uint256, uint256);
 
-    function emergencyWithdraw(address _pair) external;
+    function emergencyUnstake(address _pair, uint256 _amount) external;
 }
 
 contract BakeVaultOnMacaron is Ownable, Pausable {
@@ -921,7 +921,7 @@ contract BakeVaultOnMacaron is Ownable, Pausable {
      * @dev Only possible when contract not paused.
      */
     function harvest() external notContract whenNotPaused {
-        IMasterChef(masterchef).deposit(address(token), 0);
+        IMasterChef(masterchef).stake(address(token), 0);
 
         uint256 bal = available();
         uint256 currentPerformanceFee = bal.mul(performanceFee).div(10000);
@@ -999,7 +999,7 @@ contract BakeVaultOnMacaron is Ownable, Pausable {
      * @dev EMERGENCY ONLY. Only callable by the contract admin.
      */
     function emergencyWithdraw() external onlyAdmin {
-        IMasterChef(masterchef).emergencyWithdraw(address(token));
+        IMasterChef(masterchef).emergencyUnstake(address(token), 0);
     }
 
     /**
@@ -1035,7 +1035,7 @@ contract BakeVaultOnMacaron is Ownable, Pausable {
      * @return Expected reward to collect in BAKE
      */
     function calculateHarvestBakeRewards() external view returns (uint256) {
-        uint256 amount = IMasterChef(masterchef).pendingBake(address(token), address(this));
+        uint256 amount = IMasterChef(masterchef).pendingToken(address(token), address(this));
         amount = amount.add(available());
         uint256 currentCallFee = amount.mul(callFee).div(10000);
 
@@ -1047,7 +1047,7 @@ contract BakeVaultOnMacaron is Ownable, Pausable {
      * @return Returns total pending bake rewards
      */
     function calculateTotalPendingBakeRewards() external view returns (uint256) {
-        uint256 amount = IMasterChef(masterchef).pendingBake(address(token), address(this));
+        uint256 amount = IMasterChef(masterchef).pendingToken(address(token), address(this));
         amount = amount.add(available());
 
         return amount;
@@ -1076,7 +1076,7 @@ contract BakeVaultOnMacaron is Ownable, Pausable {
         uint256 bal = available();
         if (bal < currentAmount) {
             uint256 balWithdraw = currentAmount.sub(bal);
-            IMasterChef(masterchef).withdraw(address(token), balWithdraw);
+            IMasterChef(masterchef).unstake(address(token), balWithdraw);
             uint256 balAfter = available();
             uint256 diff = balAfter.sub(bal);
             if (diff < balWithdraw) {
@@ -1126,7 +1126,7 @@ contract BakeVaultOnMacaron is Ownable, Pausable {
     function _earn() internal {
         uint256 bal = available();
         if (bal > 0) {
-            IMasterChef(masterchef).deposit(address(token), bal);
+            IMasterChef(masterchef).stake(address(token), bal);
         }
     }
 
