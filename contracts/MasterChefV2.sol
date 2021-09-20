@@ -1646,6 +1646,10 @@ contract MasterChef is Ownable {
     function setCakeStrategy(uint256 _pid, ICakeStrategy _cakeStrategy) external onlyOwner {
         poolInfo[_pid].cakeStrategy = _cakeStrategy;
     }
+    
+    function setPoolIsCLP(uint256 _pid, bool _isCLP) external onlyOwner {
+        poolInfo[_pid].isCLP = _isCLP;
+    }
 
     function setMacaronPerBlock(uint256 _macaronPerBlock) external onlyOwner {
         macaronPerBlock = _macaronPerBlock;
