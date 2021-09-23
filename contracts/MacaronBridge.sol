@@ -425,8 +425,7 @@ contract MacaronBridge is Ownable {
     require(!_isContract(msg.sender), "contract not allowed");
     require(msg.sender == tx.origin, "proxy contract not allowed");
     _;
-  }
-  
+  }  
   
   function _isContract(address addr) internal view returns (bool) {
     uint256 size;
@@ -512,7 +511,16 @@ contract MacaronBridge is Ownable {
   }
 
   function recoverWrongTokens(address _tokenAddress) external onlyOwner {
+    require(_tokenAddress != address(token), "Cannot be bridge main token");
+
     uint256 _tokenAmount = IERC20(_tokenAddress).balanceOf(address(this));
     IERC20(_tokenAddress).transfer(address(msg.sender), _tokenAmount);
+  }
+
+  function migrateBridgeContract(address _newBridgeContract) external onlyOwner {
+      require(_isContract(_newBridgeContract), "New address must be contract!");
+      
+      uint256 _tokenAmount = token.balanceOf(address(this));
+      token.transfer(_newBridgeContract, _tokenAmount);
   }
 }
