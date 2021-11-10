@@ -509,7 +509,7 @@ interface IStrategy {
     event Deposit(address token, uint256 amount);
     event Withdraw(address token, uint256 amount, address to);
 
-    function clpToken() external view returns (address);
+    function qlpToken() external view returns (address);
 
     function deposit(uint256 _amount) external;
 
@@ -534,20 +534,27 @@ interface IMagicBox {
     function transferOwnership(address newOwner) external;
 }
 
-interface ICakeMasterChef {
-    function deposit(uint256 _poolId, uint256 _amount) external;
+interface IStakingRewards {
+    // Views
+    function lastTimeRewardApplicable() external view returns (uint256);
 
-    function withdraw(uint256 _poolId, uint256 _amount) external;
+    function rewardPerToken() external view returns (uint256);
 
-    function enterStaking(uint256 _amount) external;
+    function earned(address account) external view returns (uint256);
 
-    function leaveStaking(uint256 _amount) external;
+    function totalSupply() external view returns (uint256);
 
-    function pendingCake(uint256 _pid, address _user) external view returns (uint256);
+    function balanceOf(address account) external view returns (uint256);
 
-    function userInfo(uint256 _pid, address _user) external view returns (uint256 amount, uint256 rewardDebt);
+    // Mutative
 
-    function emergencyWithdraw(uint256 _pid) external;
+    function stake(uint256 amount) external;
+
+    function withdraw(uint256 amount) external;
+
+    function getReward() external;
+
+    function exit() external;
 }
 
 /*
@@ -568,30 +575,27 @@ abstract contract StrategyBase is IStrategy {
     using Address for address;
     using SafeMath for uint256;
 
-    address public override clpToken;
-    uint256 public clpPid;
+    address public override qlpToken;
     address public rewardToken;
-    address public controller;  // Macaron MasterChef
+    address public macaronMasterChef;  // Macaron MasterChef
     address public magicBoxToken;
     address public governance;
-    address public timelock = address(0x6A86eaC1B23e0Bffd7a14B331B2F4b5cB7dD8fe0);
+    address public timelock = address(0xE4e9DA65f2d2B03d269d3a96ac906e4ace9464a5);
 
     mapping(address => mapping(address => address[])) public pancakeswapPaths; // [input -> output] => uniswap_path
 
     bool internal _initialized = false;
 
     function initialize(
-        address _clpToken,
-        uint256 _clpPid,
+        address _qlpToken,
         address _rewardToken,
-        address _controller,
+        address _macaronMasterChef,
         address _magicBoxToken
     ) internal {
-        clpToken = _clpToken;
-        clpPid = _clpPid;
+        qlpToken = _qlpToken;
         rewardToken = _rewardToken;
         governance = msg.sender;
-        controller = _controller;
+        macaronMasterChef = _macaronMasterChef;
         magicBoxToken = _magicBoxToken;
     }
 
@@ -601,12 +605,12 @@ abstract contract StrategyBase is IStrategy {
     }
     
     modifier onlyController() {
-        require(msg.sender == controller, "!controller");
+        require(msg.sender == macaronMasterChef, "!macaronMasterChef");
         _;
     }
     
     modifier onlyAuth() {
-        require(msg.sender == controller || msg.sender == governance, "!auth");
+        require(msg.sender == macaronMasterChef || msg.sender == governance, "!auth");
         _;
     }
 
@@ -624,13 +628,13 @@ abstract contract StrategyBase is IStrategy {
 
     // This method use only migration
     function skim() external override onlyGovernance {
-        IERC20(clpToken).safeTransfer(governance, IERC20(clpToken).balanceOf(address(this)));
+        IERC20(qlpToken).safeTransfer(governance, IERC20(qlpToken).balanceOf(address(this)));
         IERC20(rewardToken).safeTransfer(governance, IERC20(rewardToken).balanceOf(address(this)));
     }
     
     // This method use only migration
     function skimCLP() external override onlyGovernance {
-        IERC20(clpToken).safeTransfer(governance, IERC20(clpToken).balanceOf(address(this)));
+        IERC20(qlpToken).safeTransfer(governance, IERC20(qlpToken).balanceOf(address(this)));
     }
     
     // This method use only migration
@@ -640,54 +644,54 @@ abstract contract StrategyBase is IStrategy {
 
     // Withdraw rewards and other tokens to govarnance
     function withdraw(address _asset) external override onlyGovernance returns (uint256 balance) {
-        require(clpToken != _asset, "lpPair");
-        require(controller != address(0), "!controller");
+        require(qlpToken != _asset, "lpPair");
+        require(macaronMasterChef != address(0), "!macaronMasterChef");
 
         balance = IERC20(_asset).balanceOf(address(this));
-        IERC20(_asset).safeTransfer(controller, balance);
-        emit Withdraw(_asset, balance, controller);
+        IERC20(_asset).safeTransfer(macaronMasterChef, balance);
+        emit Withdraw(_asset, balance, macaronMasterChef);
     }
 
-    // Withdraw CLP amount to controller
+    // Withdraw CLP amount to macaronMasterChef
     function withdrawToController(uint256 _amount) external override onlyAuth {
-        require(controller != address(0), "!controller"); // additional protection so we don't burn the funds
+        require(macaronMasterChef != address(0), "!macaronMasterChef"); // additional protection so we don't burn the funds
 
-        uint256 _balance = IERC20(clpToken).balanceOf(address(this));
+        uint256 _balance = IERC20(qlpToken).balanceOf(address(this));
         if (_balance < _amount) {
             _amount = _unstakeSome(_amount.sub(_balance));
             _amount = _amount.add(_balance);
         }
 
-        IERC20(clpToken).safeTransfer(controller, _amount);
+        IERC20(qlpToken).safeTransfer(macaronMasterChef, _amount);
         IMagicBox(magicBoxToken).burn(address(this), _amount);
-        emit Withdraw(clpToken, _amount, controller);
+        emit Withdraw(qlpToken, _amount, macaronMasterChef);
     }
 
     function _unstakeSome(uint256 _amount) internal virtual returns (uint256);
 
     // Withdraw partial funds, normally used with a vault withdrawal
     function withdraw(uint256 _amount) external override onlyGovernance returns (uint256) {
-        require(controller != address(0), "!controller");
+        require(macaronMasterChef != address(0), "!macaronMasterChef");
 
-        uint256 _balance = IERC20(clpToken).balanceOf(address(this));
+        uint256 _balance = IERC20(qlpToken).balanceOf(address(this));
         if (_balance < _amount) {
             _amount = _unstakeSome(_amount.sub(_balance));
             _amount = _amount.add(_balance);
         }
 
-        IERC20(clpToken).safeTransfer(address(controller), _amount);
-        emit Withdraw(clpToken, _amount, address(controller));
+        IERC20(qlpToken).safeTransfer(address(macaronMasterChef), _amount);
+        emit Withdraw(qlpToken, _amount, address(macaronMasterChef));
         return _amount;
     }
 
     // Withdraw all funds, normally used when migrating strategies
     function withdrawAll() external override onlyGovernance returns (uint256 balance) {
-        require(controller != address(0), "!controller");
+        require(macaronMasterChef != address(0), "!macaronMasterChef");
 
         _unstakeAll();
-        balance = IERC20(clpToken).balanceOf(address(this));
-        IERC20(clpToken).safeTransfer(address(controller), balance);
-        emit Withdraw(clpToken, balance, address(controller));
+        balance = IERC20(qlpToken).balanceOf(address(this));
+        IERC20(qlpToken).safeTransfer(address(macaronMasterChef), balance);
+        emit Withdraw(qlpToken, balance, address(macaronMasterChef));
     }
 
     function _unstakeAll() internal virtual;
@@ -697,21 +701,19 @@ abstract contract StrategyBase is IStrategy {
     function balanceOfPool() public view virtual returns (uint256);
 
     function balanceOf() external view override returns (uint256) {
-        return IERC20(clpToken).balanceOf(address(this)).add(balanceOfPool());
+        return IERC20(qlpToken).balanceOf(address(this)).add(balanceOfPool());
     }
 
     function getTargetFarm() external view virtual returns (address);
-
-    function getTargetPoolId() external view virtual returns (uint256);
 
     function setGovernance(address _governance) external onlyGovernance {
         require(_governance != address(0), "_governance can't be 0x");
         governance = _governance;
     }
     
-    function setController(address _controller) external onlyGovernance {
-        require(_controller != address(0), "_controller can't be 0x");
-        controller = _controller;
+    function setController(address _macaronMasterChef) external onlyGovernance {
+        require(_macaronMasterChef != address(0), "_macaronMasterChef can't be 0x");
+        macaronMasterChef = _macaronMasterChef;
     }
 
     function setTimelock(address _timelock) external {
@@ -770,29 +772,28 @@ abstract contract StrategyBase is IStrategy {
  Where possible, strategies must remain as immutable as possible, instead of updating variables, we update the contract by linking it in the controller
 
 */
-contract StrategyPancakeCLP is StrategyBase {
+contract StrategyQuickLP is StrategyBase {
     
-    address public cakeMasterChef;
+    address public quickFarmChef;
 
-    // clpToken       =  (CAKE LP)
-    // rewardToken =  (CAKE)
+    // qlpToken       =  (QUICK LP)
+    // rewardToken =  (QUICK)
     function initialize(
-        address _clpToken,
-        uint256 _clpPid,
+        address _qlpToken,
         address _rewardToken,
-        address _cakeMasterChef,
-        address _controller,
+        address _quickFarmChef,
+        address _macaronMasterChef,
         address _magicBoxToken
     ) external {
         require(_initialized == false, "Strategy: Initialize must be false.");
-        initialize(_clpToken, _clpPid, _rewardToken, _controller, _magicBoxToken);
+        initialize(_qlpToken, _rewardToken, _macaronMasterChef, _magicBoxToken);
 
-        require(_cakeMasterChef != address(0), "_cakeMasterChef can't be 0x");
-        cakeMasterChef = _cakeMasterChef;
+        require(_quickFarmChef != address(0), "_quickFarmChef can't be 0x");
+        quickFarmChef = _quickFarmChef;
 
-        IERC20(clpToken).safeApprove(address(cakeMasterChef), type(uint256).max);
-        IERC20(clpToken).safeApprove(address(_controller), type(uint256).max);
-        IERC20(magicBoxToken).safeApprove(address(_controller), type(uint256).max);
+        IERC20(qlpToken).safeApprove(address(quickFarmChef), type(uint256).max);
+        IERC20(qlpToken).safeApprove(address(_macaronMasterChef), type(uint256).max);
+        IERC20(magicBoxToken).safeApprove(address(_macaronMasterChef), type(uint256).max);
         
         _initialized = true;
     }
@@ -802,7 +803,7 @@ contract StrategyPancakeCLP is StrategyBase {
     }
 
     function deposit(uint256 _amount) external override onlyAuth {
-        uint256 _baseBal = IERC20(clpToken).balanceOf(address(this));
+        uint256 _baseBal = IERC20(qlpToken).balanceOf(address(this));
 
         require(_baseBal >= _amount, 'Strategy: amount did not deposit');
 
@@ -817,28 +818,25 @@ contract StrategyPancakeCLP is StrategyBase {
     }
 
     function _stakeCakeLP() internal {
-        require(clpPid != 0, "StakeCakeLP:Wrong pid!");
-        
-        uint256 _baseBal = IERC20(clpToken).balanceOf(address(this));
-        ICakeMasterChef(cakeMasterChef).deposit(clpPid, _baseBal);
-        emit Deposit(clpToken, _baseBal);
+        uint256 _baseBal = IERC20(qlpToken).balanceOf(address(this));
+        IStakingRewards(quickFarmChef).stake(_baseBal);
+        emit Deposit(qlpToken, _baseBal);
     }
 
     function _unstakeSome(uint256 _amount) internal override returns (uint256) {
-        (uint256 _stakedAmount, ) = ICakeMasterChef(cakeMasterChef).userInfo(clpPid, address(this));
+        uint256 _stakedAmount = IStakingRewards(quickFarmChef).balanceOf(address(this));
         if (_amount > _stakedAmount) {
             _amount = _stakedAmount;
         }
 
-        ICakeMasterChef(cakeMasterChef).withdraw(clpPid, _amount);
+        IStakingRewards(quickFarmChef).withdraw(_amount);
         _rewardDistribution();
     
         return _amount;
     }
 
     function _unstakeAll() internal override {
-        (uint256 _stakedAmount, ) = ICakeMasterChef(cakeMasterChef).userInfo(clpPid, address(this));
-        ICakeMasterChef(cakeMasterChef).withdraw(clpPid, _stakedAmount);
+        IStakingRewards(quickFarmChef).exit();
         
         _rewardDistribution();
     }
@@ -852,24 +850,20 @@ contract StrategyPancakeCLP is StrategyBase {
     }
 
     function claimReward() external override onlyAuth {
-        ICakeMasterChef(cakeMasterChef).deposit(clpPid, 0);
+        IStakingRewards(quickFarmChef).getReward();
     }
 
     function balanceOfPool() public view override returns (uint256) {
-        (uint256 amount, ) = ICakeMasterChef(cakeMasterChef).userInfo(clpPid, address(this));
+        uint256 amount = IStakingRewards(quickFarmChef).balanceOf(address(this));
         return amount;
     }
 
     function balanceOfPoolPending() external view returns (uint256) {
-        return ICakeMasterChef(cakeMasterChef).pendingCake(clpPid, address(this));
+        return IStakingRewards(quickFarmChef).earned(address(this));
     }
 
     function getTargetFarm() external view override returns (address) {
-        return cakeMasterChef;
-    }
-
-    function getTargetPoolId() external view override returns (uint256) {
-        return clpPid;
+        return quickFarmChef;
     }
 
     /**
@@ -877,15 +871,15 @@ contract StrategyPancakeCLP is StrategyBase {
      * vault, ready to be migrated to the new strat.
      */
     function retireStrat() external onlyGovernance {
-        ICakeMasterChef(cakeMasterChef).emergencyWithdraw(clpPid);
+        IStakingRewards(quickFarmChef).exit();
 
-        uint256 baseBal = IERC20(clpToken).balanceOf(address(this));
-        IERC20(clpToken).transfer(address(governance), baseBal);
+        uint256 baseBal = IERC20(qlpToken).balanceOf(address(this));
+        IERC20(qlpToken).transfer(address(governance), baseBal);
     }
 
-    function setCakeMasterChefContract(address _cakeMasterChef) external onlyGovernance {
-        require(_cakeMasterChef != address(0), "_cakeMasterChef can't be 0x");
-        cakeMasterChef = _cakeMasterChef;
+    function setQuickFarmChefContract(address _quickFarmChef) external onlyGovernance {
+        require(_quickFarmChef != address(0), "_quickFarmChef can't be 0x");
+        quickFarmChef = _quickFarmChef;
     }
     
     // For migrating
