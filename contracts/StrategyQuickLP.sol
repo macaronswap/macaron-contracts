@@ -830,6 +830,7 @@ contract StrategyQuickLP is StrategyBase {
         }
 
         IStakingRewards(quickFarmChef).withdraw(_amount);
+        IStakingRewards(quickFarmChef).getReward();
         _rewardDistribution();
     
         return _amount;
