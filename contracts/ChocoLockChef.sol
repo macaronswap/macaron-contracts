@@ -672,6 +672,14 @@ interface ISmartChef {
     function userInfo(address _user) external view returns (uint256 amount, uint256 rewardDebt);
 }
 
+interface IWBNB {
+    function deposit() external payable;
+
+    function withdraw(uint wad) external;
+
+    //...
+}
+
 contract ChocoChef is Ownable {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
@@ -680,6 +688,7 @@ contract ChocoChef is Ownable {
     struct UserInfo {
         uint256 amount;     // How many LP tokens the user has provided.
         uint256 rewardDebt; // Reward debt. See explanation below.
+        uint256 lastDepositedTime; // keeps track of deposited time for potential penalty
     }
 
     // Info of each pool.
@@ -701,6 +710,7 @@ contract ChocoChef is Ownable {
     // The STAKING AND REWARD TOKEN!
     IBEP20 public stakingToken;
     IBEP20 public rewardToken;
+    bool public isRewardTokenWrapped;
 
     // MCRN tokens created per block.
     uint256 public rewardPerBlock;
@@ -717,6 +727,9 @@ contract ChocoChef is Ownable {
     uint256 public bonusEndBlock;
     // Total lpSupply for default pool
     uint256 public lpSupply = 0;
+
+    uint256 public constant MAX_WITHDRAW_PERIOD = 60 days;
+    uint256 public withdrawPeriod = 15 days;
     
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
@@ -725,6 +738,7 @@ contract ChocoChef is Ownable {
     constructor(
         IBEP20 _stakingToken,
         IBEP20 _rewardToken,
+        bool _isRewardTokenWrapped,
         uint256 _rewardPerBlock,
         uint256 _startBlock,
         uint256 _bonusEndBlock,
@@ -736,6 +750,7 @@ contract ChocoChef is Ownable {
     ) public {
         stakingToken = _stakingToken;
         rewardToken = _rewardToken;
+        isRewardTokenWrapped = _isRewardTokenWrapped;
         rewardPerBlock = _rewardPerBlock;
         startBlock = _startBlock;
         bonusEndBlock = _bonusEndBlock;
@@ -822,6 +837,22 @@ contract ChocoChef is Ownable {
         pool.lastRewardBlock = block.number;
     }
 
+    function setIsRewardTokenWrapped(bool _isWrapped) external onlyOwner {
+        isRewardTokenWrapped = _isWrapped;
+    }
+
+    /**
+     * @notice Sets withdraw period
+     * @dev Only callable by the contract admin.
+     */
+    function setWithdrawPeriod(uint256 _withdrawPeriod) external onlyOwner {
+        require(
+            _withdrawPeriod <= MAX_WITHDRAW_PERIOD,
+            "withdrawFeePeriod cannot be more than MAX_WITHDRAW_PERIOD"
+        );
+        withdrawPeriod = _withdrawPeriod;
+    }
+
     // Update reward variables for all pools. Be careful of gas spending!
     function massUpdatePools() public {
         uint256 length = poolInfo.length;
@@ -829,7 +860,6 @@ contract ChocoChef is Ownable {
             updatePool(pid);
         }
     }
-
 
     // Stake STAKING tokens to ChocoChef
     function deposit(uint256 _amount) external {
@@ -839,13 +869,21 @@ contract ChocoChef is Ownable {
         if (user.amount > 0) {
             uint256 pending = user.amount.mul(pool.accMacaronPerShare).div(1e12).sub(user.rewardDebt);
             if(pending > 0) {
-                rewardToken.safeTransfer(address(msg.sender), pending);
+                if(isRewardTokenWrapped) {
+                    //unwrap and send native token
+                    IWBNB(address(rewardToken)).withdraw(pending);
+                    address payable _to = msg.sender;
+                    _to.transfer(pending);
+                } else {
+                    rewardToken.safeTransfer(address(msg.sender), pending);
+                }
             }
         }
         if(_amount > 0) {
             pool.lpToken.safeTransferFrom(address(msg.sender), address(this), _amount);
             user.amount = user.amount.add(_amount);
             lpSupply = lpSupply.add(_amount);
+            user.lastDepositedTime = block.timestamp;
             
             // Stake CLP to PC
             if(pool.isCLP) {
@@ -853,7 +891,7 @@ contract ChocoChef is Ownable {
             }
         }
         user.rewardDebt = user.amount.mul(pool.accMacaronPerShare).div(1e12);
-
+        
         emit Deposit(msg.sender, _amount);
     }
 
@@ -862,10 +900,19 @@ contract ChocoChef is Ownable {
         PoolInfo storage pool = poolInfo[0];
         UserInfo storage user = userInfo[msg.sender];
         require(user.amount >= _amount, "withdraw: not good");
+        require(block.timestamp < user.lastDepositedTime.add(withdrawPeriod), "withdraw: lock period");
+
         updatePool(0);
         uint256 pending = user.amount.mul(pool.accMacaronPerShare).div(1e12).sub(user.rewardDebt);
         if(pending > 0) {
-            rewardToken.safeTransfer(address(msg.sender), pending);
+            if(isRewardTokenWrapped) {
+                //unwrap and send native token
+                IWBNB(address(rewardToken)).withdraw(pending);
+                address payable _to = msg.sender;
+                _to.transfer(pending);
+            } else {
+                rewardToken.safeTransfer(address(msg.sender), pending);
+            }
         }
         if(_amount > 0) {
             user.amount = user.amount.sub(_amount);
@@ -888,19 +935,9 @@ contract ChocoChef is Ownable {
         emit Withdraw(msg.sender, _amount);
     }
 
-    // Withdraw without caring about rewards. EMERGENCY ONLY.
-    function emergencyWithdraw() external {
-        PoolInfo storage pool = poolInfo[0];
-        UserInfo storage user = userInfo[msg.sender];
-        pool.lpToken.safeTransfer(address(msg.sender), user.amount);
-        user.amount = 0;
-        user.rewardDebt = 0;
-        emit EmergencyWithdraw(msg.sender, user.amount);
-    }
-
     // Withdraw reward. EMERGENCY ONLY.
     function emergencyRewardWithdraw(uint256 _amount) external onlyOwner {
-        require(_amount < rewardToken.balanceOf(address(this)), 'not enough token');
+        require(_amount < rewardToken.balanceOf(address(this)), "not enough token");
         rewardToken.safeTransfer(address(msg.sender), _amount);
     }
 
@@ -967,5 +1004,16 @@ contract ChocoChef is Ownable {
 
     function rewardDistribution(address smartRewardToken) external onlyOwner {
         _rewardDistribution(smartRewardToken);
+    }
+
+    /**
+     * @notice Withdraw unexpected tokens sent to the Macaron Vault
+     */
+    function inCaseTokensGetStuck(address _token) external onlyOwner {
+        require(_token != address(stakingToken), "Token cannot be same as staking token");
+        require(_token != address(rewardToken), "Token cannot be same as reward token");
+
+        uint256 amount = IBEP20(_token).balanceOf(address(this));
+        IBEP20(_token).safeTransfer(msg.sender, amount);
     }
 }
