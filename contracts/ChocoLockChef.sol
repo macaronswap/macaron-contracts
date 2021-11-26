@@ -673,11 +673,15 @@ interface ISmartChef {
 }
 
 interface IWBNB {
-    function deposit() external payable;
-
-    function withdraw(uint wad) external;
-
-    //...
+  function approve (address guy, uint256 wad) external returns (bool);
+  function totalSupply () external view returns (uint256);
+  function transferFrom (address src, address dst, uint256 wad) external returns (bool);
+  function withdraw (uint256 wad) external;
+  function decimals () external view returns (uint8);
+  function balanceOf (address) external view returns (uint256);
+  function transfer (address dst, uint256 wad) external returns (bool);
+  function deposit () external payable;
+  function allowance (address, address) external view returns (uint256);
 }
 
 contract ChocoLockChef is Ownable {
@@ -782,6 +786,10 @@ contract ChocoLockChef is Ownable {
         }
     }
 
+    fallback() external payable {}
+    
+    receive() external payable {}
+
     function stopReward() external onlyOwner {
         bonusEndBlock = block.number;
     }
@@ -872,6 +880,7 @@ contract ChocoLockChef is Ownable {
                 if(isRewardTokenWrapped) {
                     //unwrap and send native token
                     IWBNB(address(rewardToken)).withdraw(pending);
+                    require(address(this).balance >= pending, "deposit: insufficient native token balance");
                     payable(msg.sender).transfer(pending);
                 } else {
                     rewardToken.safeTransfer(address(msg.sender), pending);
