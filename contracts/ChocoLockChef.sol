@@ -899,7 +899,7 @@ contract ChocoLockChef is Ownable {
         PoolInfo storage pool = poolInfo[0];
         UserInfo storage user = userInfo[msg.sender];
         require(user.amount >= _amount, "withdraw: not good");
-        require(block.timestamp < user.lastDepositedTime.add(withdrawPeriod), "withdraw: lock period");
+        require(block.timestamp > user.lastDepositedTime.add(withdrawPeriod), "withdraw: lock period");
 
         updatePool(0);
         uint256 pending = user.amount.mul(pool.accMacaronPerShare).div(1e12).sub(user.rewardDebt);
