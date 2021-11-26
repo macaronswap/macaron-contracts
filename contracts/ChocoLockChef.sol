@@ -680,7 +680,7 @@ interface IWBNB {
     //...
 }
 
-contract ChocoChef is Ownable {
+contract ChocoLockChef is Ownable {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
 
@@ -935,7 +935,7 @@ contract ChocoChef is Ownable {
 
     // Withdraw reward. EMERGENCY ONLY.
     function emergencyRewardWithdraw(uint256 _amount) external onlyOwner {
-        require(_amount < rewardToken.balanceOf(address(this)), "not enough token");
+        require(_amount <= rewardToken.balanceOf(address(this)), "not enough token");
         rewardToken.safeTransfer(address(msg.sender), _amount);
     }
 
