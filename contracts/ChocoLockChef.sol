@@ -872,8 +872,7 @@ contract ChocoChef is Ownable {
                 if(isRewardTokenWrapped) {
                     //unwrap and send native token
                     IWBNB(address(rewardToken)).withdraw(pending);
-                    address payable _to = msg.sender;
-                    _to.transfer(pending);
+                    payable(msg.sender).transfer(pending);
                 } else {
                     rewardToken.safeTransfer(address(msg.sender), pending);
                 }
@@ -908,8 +907,7 @@ contract ChocoChef is Ownable {
             if(isRewardTokenWrapped) {
                 //unwrap and send native token
                 IWBNB(address(rewardToken)).withdraw(pending);
-                address payable _to = msg.sender;
-                _to.transfer(pending);
+                payable(msg.sender).transfer(pending);
             } else {
                 rewardToken.safeTransfer(address(msg.sender), pending);
             }
