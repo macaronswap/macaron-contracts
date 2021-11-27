@@ -735,6 +735,8 @@ contract ChocoLockChef is Ownable {
     uint256 public constant MAX_WITHDRAW_PERIOD = 60 days;
     uint256 public withdrawPeriod = 15 days;
     
+    bool isEmergencyWdEnable = false;
+
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 amount);
@@ -790,17 +792,12 @@ contract ChocoLockChef is Ownable {
     
     receive() external payable {}
 
-    function stopReward() external onlyOwner {
-        bonusEndBlock = block.number;
-    }
-    
-    function setRewardEndBlock(uint256 _bonusEndBlock) external onlyOwner {
-        bonusEndBlock = _bonusEndBlock;
-    }
-    
-    function setRewardPerBlock(uint256 _rewardPerBlock) external onlyOwner {
-        rewardPerBlock = _rewardPerBlock;
-        massUpdatePools();
+    function getRemainingTime(address account) external view returns (uint256) {
+        UserInfo storage user = userInfo[account];
+        if(block.timestamp > user.lastDepositedTime.add(withdrawPeriod))
+            return 0;
+        else
+            return user.lastDepositedTime.add(withdrawPeriod).sub(block.timestamp);
     }
 
     // Return reward multiplier over the given _from to _to block.
@@ -826,6 +823,23 @@ contract ChocoLockChef is Ownable {
             accMacaronPerShare = accMacaronPerShare.add(macaronReward.mul(1e12).div(lpSupply));
         }
         return user.amount.mul(accMacaronPerShare).div(1e12).sub(user.rewardDebt);
+    }
+
+    function setEmergencyWd(bool _enabled) external onlyOwner {
+            isEmergencyWdEnable = _enabled;
+    }
+
+    function stopReward() external onlyOwner {
+        bonusEndBlock = block.number;
+    }
+    
+    function setRewardEndBlock(uint256 _bonusEndBlock) external onlyOwner {
+        bonusEndBlock = _bonusEndBlock;
+    }
+    
+    function setRewardPerBlock(uint256 _rewardPerBlock) external onlyOwner {
+        rewardPerBlock = _rewardPerBlock;
+        massUpdatePools();
     }
 
     // Update reward variables of the given pool to be up-to-date.
@@ -938,8 +952,23 @@ contract ChocoLockChef is Ownable {
             }
         }
         user.rewardDebt = user.amount.mul(pool.accMacaronPerShare).div(1e12);
+        user.lastDepositedTime = 0;
 
         emit Withdraw(msg.sender, _amount);
+    }
+
+    // Withdraw without caring about rewards. EMERGENCY ONLY.
+    function emergencyWithdraw() external {
+        require(isEmergencyWdEnable, "emergencyWithdraw: Emergency Wd not enabled");
+        PoolInfo storage pool = poolInfo[0];
+        UserInfo storage user = userInfo[msg.sender];
+        uint256 amount = user.amount;
+        lpSupply = lpSupply - amount;
+        user.amount = 0;
+        user.rewardDebt = 0;
+        user.lastDepositedTime = 0;
+        pool.lpToken.safeTransfer(address(msg.sender), amount);
+        emit EmergencyWithdraw(msg.sender, amount);
     }
 
     // Withdraw reward. EMERGENCY ONLY.
