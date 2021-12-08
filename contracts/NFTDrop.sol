@@ -2728,7 +2728,7 @@ contract AlmondSpecialV1 is Ownable {
     mapping(uint8 => Almond) public almondCharacteristics;
 
     // Number of previous series (i.e. different visuals)
-    uint8 private constant previousNumberAlmondIds = 10;
+    uint8 private constant previousNumberAlmondIds = 0;
 
     struct Almond {
         string tokenURI; // e.g. ipfsHash/hiccups.json
@@ -2765,6 +2765,18 @@ contract AlmondSpecialV1 is Ownable {
         almondMintingStation = _almondMintingStation;
         macaronToken = _macaronToken;
         maxViewLength = _maxViewLength;
+    }
+
+    function setEligible(address _address, uint8 _almondId, bool _state) external onlyOwner {
+        require(almondCharacteristics[_almondId].isActive, "ERR_ID_INVALID");
+        isEligible[_address][_almondId] = _state;
+    }
+
+    function setEligibleMultiple(address[] memory _addresses, uint8 _almondId, bool _state) external onlyOwner {
+        require(almondCharacteristics[_almondId].isActive, "ERR_ID_INVALID");
+        for(uint256 i = 0; i < _addresses.length; i++) {
+            isEligible[_addresses[i]][_almondId] = _state;
+        }
     }
 
     /**
@@ -2854,11 +2866,7 @@ contract AlmondSpecialV1 is Ownable {
         view
         returns (bool)
     {
-        if (isEligible[_userAddress][_almondId]) {
-            return false;
-        } else {
-            return _canClaim(_userAddress, _almondId);
-        }
+        return _canClaim(_userAddress, _almondId);
     }
 
     function canClaimMultiple(address _userAddress, uint8[] calldata _almondIds)
