@@ -2417,44 +2417,44 @@ contract ERC721 is
     ) internal virtual {}
 }
 
-contract PancakeBunnies is ERC721, Ownable {
+contract MacaronSwapMacas is ERC721, Ownable {
     using Counters for Counters.Counter;
 
-    // Map the number of tokens per bunnyId
+    // Map the number of tokens per macaId
     mapping(uint8 => uint256) public bunnyCount;
 
-    // Map the number of tokens burnt per bunnyId
+    // Map the number of tokens burnt per macaId
     mapping(uint8 => uint256) public bunnyBurnCount;
 
     // Used for generating the tokenId of new NFT minted
     Counters.Counter private _tokenIds;
 
-    // Map the bunnyId for each tokenId
-    mapping(uint256 => uint8) private bunnyIds;
+    // Map the macaId for each tokenId
+    mapping(uint256 => uint8) private macaIds;
 
     // Map the bunnyName for a tokenId
-    mapping(uint8 => string) private bunnyNames;
+    mapping(uint8 => string) private macaNames;
 
-    constructor(string memory _baseURI) public ERC721("Pancake Bunnies", "PB") {
+    constructor(string memory _baseURI) public ERC721("MacaronSwap Maca", "PB") {
         _setBaseURI(_baseURI);
     }
 
     /**
-     * @dev Get bunnyId for a specific tokenId.
+     * @dev Get macaId for a specific tokenId.
      */
     function getBunnyId(uint256 _tokenId) external view returns (uint8) {
-        return bunnyIds[_tokenId];
+        return macaIds[_tokenId];
     }
 
     /**
-     * @dev Get the associated bunnyName for a specific bunnyId.
+     * @dev Get the associated bunnyName for a specific macaId.
      */
-    function getBunnyName(uint8 _bunnyId)
+    function getBunnyName(uint8 _macaId)
         external
         view
         returns (string memory)
     {
-        return bunnyNames[_bunnyId];
+        return macaNames[_macaId];
     }
 
     /**
@@ -2465,8 +2465,8 @@ contract PancakeBunnies is ERC721, Ownable {
         view
         returns (string memory)
     {
-        uint8 bunnyId = bunnyIds[_tokenId];
-        return bunnyNames[bunnyId];
+        uint8 macaId = macaIds[_tokenId];
+        return macaNames[macaId];
     }
 
     /**
@@ -2475,45 +2475,45 @@ contract PancakeBunnies is ERC721, Ownable {
     function mint(
         address _to,
         string calldata _tokenURI,
-        uint8 _bunnyId
+        uint8 _macaId
     ) external onlyOwner returns (uint256) {
         uint256 newId = _tokenIds.current();
         _tokenIds.increment();
-        bunnyIds[newId] = _bunnyId;
-        bunnyCount[_bunnyId] = bunnyCount[_bunnyId].add(1);
+        macaIds[newId] = _macaId;
+        bunnyCount[_macaId] = bunnyCount[_macaId].add(1);
         _mint(_to, newId);
         _setTokenURI(newId, _tokenURI);
         return newId;
     }
 
     /**
-     * @dev Set a unique name for each bunnyId. It is supposed to be called once.
+     * @dev Set a unique name for each macaId. It is supposed to be called once.
      */
-    function setBunnyName(uint8 _bunnyId, string calldata _name)
+    function setMacaName(uint8 _macaId, string calldata _name)
         external
         onlyOwner
     {
-        bunnyNames[_bunnyId] = _name;
+        macaNames[_macaId] = _name;
     }
 
     /**
      * @dev Burn a NFT token. Callable by owner only.
      */
     function burn(uint256 _tokenId) external onlyOwner {
-        uint8 bunnyIdBurnt = bunnyIds[_tokenId];
+        uint8 bunnyIdBurnt = macaIds[_tokenId];
         bunnyCount[bunnyIdBurnt] = bunnyCount[bunnyIdBurnt].sub(1);
         bunnyBurnCount[bunnyIdBurnt] = bunnyBurnCount[bunnyIdBurnt].add(1);
         _burn(_tokenId);
     }
 }
 
-/** @title BunnyMintingStation.
+/** @title MacaMintingStation.
 @dev It is a contract that allow different factories to mint
-Pancake Collectibles/Bunnies.
+MacaronSwap Collectibles/Maca.
 */
 
-contract BunnyMintingStation is AccessControl {
-    PancakeBunnies public pancakeBunnies;
+contract MacaMintingStation is AccessControl {
+    MacaronSwapMacas public macaronSwapMacas;
 
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
@@ -2529,23 +2529,23 @@ contract BunnyMintingStation is AccessControl {
         _;
     }
 
-    constructor(PancakeBunnies _pancakeBunnies) public {
-        pancakeBunnies = _pancakeBunnies;
+    constructor(MacaronSwapMacas _macaronSwapMacas) public {
+        macaronSwapMacas = _macaronSwapMacas;
         _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
     }
 
     /**
-     * @dev Mint NFTs from the PancakeBunnies contract.
-     * Users can specify what bunnyId they want to mint. Users can claim once.
-     * There is a limit on how many are distributed. It requires CAKE balance to be > 0.
+     * @dev Mint NFTs from the MacaronSwapMacas contract.
+     * Users can specify what macaId they want to mint. Users can claim once.
+     * There is a limit on how many are distributed. It requires MACARON balance to be > 0.
      */
     function mintCollectible(
         address _tokenReceiver,
         string calldata _tokenURI,
-        uint8 _bunnyId
+        uint8 _macaId
     ) external onlyMinter returns (uint256) {
         uint256 tokenId =
-            pancakeBunnies.mint(_tokenReceiver, _tokenURI, _bunnyId);
+            macaronSwapMacas.mint(_tokenReceiver, _tokenURI, _macaId);
         return tokenId;
     }
 
@@ -2553,11 +2553,11 @@ contract BunnyMintingStation is AccessControl {
      * @dev Set up names for bunnies.
      * Only the main admins can set it.
      */
-    function setBunnyName(uint8 _bunnyId, string calldata _bunnyName)
+    function setMacaName(uint8 _macaId, string calldata _macaName)
         external
         onlyOwner
     {
-        pancakeBunnies.setBunnyName(_bunnyId, _bunnyName);
+        macaronSwapMacas.setMacaName(_macaId, _macaName);
     }
 
     /**
@@ -2566,33 +2566,7 @@ contract BunnyMintingStation is AccessControl {
      * Only the main admins can set it.
      */
     function changeOwnershipNFTContract(address _newOwner) external onlyOwner {
-        pancakeBunnies.transferOwnership(_newOwner);
-    }
-}
-
-// File: @openzeppelin/contracts/token/ERC721/ERC721Holder.sol
-
-
-
-/**
- * @dev Implementation of the {IERC721Receiver} interface.
- *
- * Accepts all token transfers.
- * Make sure the contract is able to use its token with {IERC721-safeTransferFrom}, {IERC721-approve} or {IERC721-setApprovalForAll}.
- */
-contract ERC721Holder is IERC721Receiver {
-    /**
-     * @dev See {IERC721Receiver-onERC721Received}.
-     *
-     * Always returns `IERC721Receiver.onERC721Received.selector`.
-     */
-    function onERC721Received(
-        address,
-        address,
-        uint256,
-        bytes memory
-    ) public virtual override returns (bytes4) {
-        return this.onERC721Received.selector;
+        macaronSwapMacas.transferOwnership(_newOwner);
     }
 }
 
@@ -2722,177 +2696,177 @@ library SafeBEP20 {
     }
 }
 
-contract MNFTDrop1 is Ownable {
+contract MacaNFTDrop1 is Ownable {
     using SafeBEP20 for IBEP20;
     using SafeMath for uint256;
 
-    BunnyMintingStation public bunnyMintingStation;
+    MacaMintingStation public macaMintingStation;
     
     IBEP20 public macaronToken;
 
     uint256 public maxViewLength;
-    uint256 public numberDifferentBunnies;
+    uint256 public numberDifferentMacas;
 
     mapping(address => mapping(uint8 => bool)) public isEligible;
 
-    // Map if address for a bunnyId has already claimed a NFT
+    // Map if address for a macaId has already claimed a NFT
     mapping(address => mapping(uint8 => bool)) public hasClaimed;
 
-    // Map if bunnyId to its characteristics
-    mapping(uint8 => Bunnies) public bunnyCharacteristics;
+    // Map if macaId to its characteristics
+    mapping(uint8 => Maca) public macaCharacteristics;
 
     // Number of previous series (i.e. different visuals)
     uint8 private constant previousNumberBunnyIds = 10;
 
-    struct Bunnies {
+    struct Maca {
         string tokenURI; // e.g. ipfsHash/hiccups.json
         uint256 thresholdUser; // e.g. 1900 or 100000
-        uint256 cakeCost;
+        uint256 macaronCost;
         bool isActive;
         bool isCreated;
     }
 
-    // Event to notify a new bunny is mintable
-    event BunnyAdd(
-        uint8 indexed bunnyId,
+    // Event to notify a new maca is mintable
+    event MacaAdd(
+        uint8 indexed macaId,
         uint256 thresholdUser,
-        uint256 costCake
+        uint256 costMacaron
     );
 
     // Event to notify one of the bunnies' requirements to mint differ
-    event BunnyChange(
-        uint8 indexed bunnyId,
+    event MacaChange(
+        uint8 indexed macaId,
         uint256 thresholdUser,
-        uint256 costCake,
+        uint256 costMacaron,
         bool isActive
     );
 
     // Event to notify when NFT is successfully minted
-    event BunnyMint(
+    event MacaMint(
         address indexed to,
         uint256 indexed tokenId,
-        uint8 indexed bunnyId
+        uint8 indexed macaId
     );
 
     constructor(
-        BunnyMintingStation _bunnyMintingStation,
+        MacaMintingStation _macaMintingStation,
         IBEP20 _macaronToken,
         uint256 _maxViewLength
     ) public {
-        bunnyMintingStation = _bunnyMintingStation;
+        macaMintingStation = _macaMintingStation;
         macaronToken = _macaronToken;
         maxViewLength = _maxViewLength;
     }
 
     /**
-     * @dev Mint NFTs from the BunnyMintingStation contract.
+     * @dev Mint NFTs from the MacaMintingStation contract.
      * Users can claim once.
      */
-    function mintNFT(uint8 _bunnyId) external {
-        // Check that the _bunnyId is within boundary
-        require(_bunnyId >= previousNumberBunnyIds, "ERR_ID_LOW");
-        require(bunnyCharacteristics[_bunnyId].isActive, "ERR_ID_INVALID");
+    function mintNFT(uint8 _macaId) external {
+        // Check that the _macaId is within boundary
+        require(_macaId >= previousNumberBunnyIds, "ERR_ID_LOW");
+        require(macaCharacteristics[_macaId].isActive, "ERR_ID_INVALID");
 
         address senderAddress = _msgSender();
 
         // 1. Check _msgSender() has not claimed
-        require(!hasClaimed[senderAddress][_bunnyId], "ERR_HAS_CLAIMED");
+        require(!hasClaimed[senderAddress][_macaId], "ERR_HAS_CLAIMED");
 
-        require(isEligible[senderAddress][_bunnyId], "ERR_USER_NOT_ELIGIBLE");
+        require(isEligible[senderAddress][_macaId], "ERR_USER_NOT_ELIGIBLE");
 
-        // Check if there is any cost associated with getting the bunny
-        if (bunnyCharacteristics[_bunnyId].cakeCost > 0) {
+        // Check if there is any cost associated with getting the maca
+        if (macaCharacteristics[_macaId].macaronCost > 0) {
             macaronToken.safeTransferFrom(
                 senderAddress,
                 address(this),
-                bunnyCharacteristics[_bunnyId].cakeCost
+                macaCharacteristics[_macaId].macaronCost
             );
         }
 
         // Update that _msgSender() has claimed
-        hasClaimed[senderAddress][_bunnyId] = true;
+        hasClaimed[senderAddress][_macaId] = true;
 
         uint256 tokenId =
-            bunnyMintingStation.mintCollectible(
+            macaMintingStation.mintCollectible(
                 senderAddress,
-                bunnyCharacteristics[_bunnyId].tokenURI,
-                _bunnyId
+                macaCharacteristics[_macaId].tokenURI,
+                _macaId
             );
 
-        emit BunnyMint(senderAddress, tokenId, _bunnyId);
+        emit MacaMint(senderAddress, tokenId, _macaId);
     }
 
     function addBunny(
-        uint8 _bunnyId,
+        uint8 _macaId,
         string calldata _tokenURI,
         uint256 _thresholdUser,
-        uint256 _cakeCost
+        uint256 _macaronCost
     ) external onlyOwner {
-        require(!bunnyCharacteristics[_bunnyId].isCreated, "ERR_CREATED");
-        require(_bunnyId >= previousNumberBunnyIds, "ERR_ID_LOW_2");
+        require(!macaCharacteristics[_macaId].isCreated, "ERR_CREATED");
+        require(_macaId >= previousNumberBunnyIds, "ERR_ID_LOW_2");
 
-        bunnyCharacteristics[_bunnyId] = Bunnies({
+        macaCharacteristics[_macaId] = Maca({
             tokenURI: _tokenURI,
             thresholdUser: _thresholdUser,
-            cakeCost: _cakeCost,
+            macaronCost: _macaronCost,
             isActive: true,
             isCreated: true
         });
 
-        numberDifferentBunnies = numberDifferentBunnies.add(1);
+        numberDifferentMacas = numberDifferentMacas.add(1);
 
-        emit BunnyAdd(_bunnyId, _thresholdUser, _cakeCost);
+        emit MacaAdd(_macaId, _thresholdUser, _macaronCost);
     }
 
     /**
-     * @dev It transfers the CAKE tokens back to the chef address.
+     * @dev It transfers the MACARON tokens back to the chef address.
      * Only callable by the owner.
      */
     function claimFee(uint256 _amount) external onlyOwner {
         macaronToken.safeTransfer(_msgSender(), _amount);
     }
 
-    function updateBunny(
-        uint8 _bunnyId,
+    function updateMaca(
+        uint8 _macaId,
         uint256 _thresholdUser,
-        uint256 _cakeCost,
+        uint256 _macaronCost,
         bool _isActive
     ) external onlyOwner {
-        require(bunnyCharacteristics[_bunnyId].isCreated, "ERR_NOT_CREATED");
-        bunnyCharacteristics[_bunnyId].thresholdUser = _thresholdUser;
-        bunnyCharacteristics[_bunnyId].cakeCost = _cakeCost;
-        bunnyCharacteristics[_bunnyId].isActive = _isActive;
+        require(macaCharacteristics[_macaId].isCreated, "ERR_NOT_CREATED");
+        macaCharacteristics[_macaId].thresholdUser = _thresholdUser;
+        macaCharacteristics[_macaId].macaronCost = _macaronCost;
+        macaCharacteristics[_macaId].isActive = _isActive;
 
-        emit BunnyChange(_bunnyId, _thresholdUser, _cakeCost, _isActive);
+        emit MacaChange(_macaId, _thresholdUser, _macaronCost, _isActive);
     }
 
     function updateMaxViewLength(uint256 _newMaxViewLength) external onlyOwner {
         maxViewLength = _newMaxViewLength;
     }
 
-    function canClaimSingle(address _userAddress, uint8 _bunnyId)
+    function canClaimSingle(address _userAddress, uint8 _macaId)
         external
         view
         returns (bool)
     {
-        if (isEligible[_userAddress][_bunnyId]) {
+        if (isEligible[_userAddress][_macaId]) {
             return false;
         } else {
-            return _canClaim(_userAddress, _bunnyId);
+            return _canClaim(_userAddress, _macaId);
         }
     }
 
-    function canClaimMultiple(address _userAddress, uint8[] calldata _bunnyIds)
+    function canClaimMultiple(address _userAddress, uint8[] calldata _macaIds)
         external
         view
         returns (bool[] memory)
     {
-        require(_bunnyIds.length <= maxViewLength, "ERR_LENGTH_VIEW");
+        require(_macaIds.length <= maxViewLength, "ERR_LENGTH_VIEW");
 
-        bool[] memory responses = new bool[](_bunnyIds.length);
+        bool[] memory responses = new bool[](_macaIds.length);
 
-        for (uint256 i = 0; i < _bunnyIds.length; i++) {
-            bool claimStatus = _canClaim(_userAddress, _bunnyIds[i]);
+        for (uint256 i = 0; i < _macaIds.length; i++) {
+            bool claimStatus = _canClaim(_userAddress, _macaIds[i]);
             responses[i] = claimStatus;
         }
         return responses;
@@ -2904,13 +2878,13 @@ contract MNFTDrop1 is Ownable {
      */
     function _canClaim(
         address _userAddress,
-        uint8 _bunnyId
+        uint8 _macaId
     ) internal view returns (bool) {
-        bool bunnyActive = bunnyCharacteristics[_bunnyId].isActive;
+        bool bunnyActive = macaCharacteristics[_macaId].isActive;
 
-        if (!isEligible[_userAddress][_bunnyId]) {
+        if (!isEligible[_userAddress][_macaId]) {
             return false;
-        } else if (hasClaimed[_userAddress][_bunnyId]) {
+        } else if (hasClaimed[_userAddress][_macaId]) {
             return false;
         } else if (!bunnyActive) {
             return false;
