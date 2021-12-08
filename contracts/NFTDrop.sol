@@ -2417,56 +2417,56 @@ contract ERC721 is
     ) internal virtual {}
 }
 
-contract MacaronSwapMacas is ERC721, Ownable {
+contract MacaronAlmonds is ERC721, Ownable {
     using Counters for Counters.Counter;
 
-    // Map the number of tokens per macaId
+    // Map the number of tokens per almondId
     mapping(uint8 => uint256) public bunnyCount;
 
-    // Map the number of tokens burnt per macaId
+    // Map the number of tokens burnt per almondId
     mapping(uint8 => uint256) public bunnyBurnCount;
 
     // Used for generating the tokenId of new NFT minted
     Counters.Counter private _tokenIds;
 
-    // Map the macaId for each tokenId
-    mapping(uint256 => uint8) private macaIds;
+    // Map the almondId for each tokenId
+    mapping(uint256 => uint8) private almondIds;
 
     // Map the bunnyName for a tokenId
-    mapping(uint8 => string) private macaNames;
+    mapping(uint8 => string) private almondNames;
 
-    constructor(string memory _baseURI) public ERC721("MacaronSwap Maca", "PB") {
+    constructor(string memory _baseURI) public ERC721("MacaronSwap Almond", "PB") {
         _setBaseURI(_baseURI);
     }
 
     /**
-     * @dev Get macaId for a specific tokenId.
+     * @dev Get almondId for a specific tokenId.
      */
-    function getBunnyId(uint256 _tokenId) external view returns (uint8) {
-        return macaIds[_tokenId];
+    function getAlmondId(uint256 _tokenId) external view returns (uint8) {
+        return almondIds[_tokenId];
     }
 
     /**
-     * @dev Get the associated bunnyName for a specific macaId.
+     * @dev Get the associated bunnyName for a specific almondId.
      */
-    function getBunnyName(uint8 _macaId)
+    function getAlmondName(uint8 _almondId)
         external
         view
         returns (string memory)
     {
-        return macaNames[_macaId];
+        return almondNames[_almondId];
     }
 
     /**
      * @dev Get the associated bunnyName for a unique tokenId.
      */
-    function getBunnyNameOfTokenId(uint256 _tokenId)
+    function getAlmondNameOfTokenId(uint256 _tokenId)
         external
         view
         returns (string memory)
     {
-        uint8 macaId = macaIds[_tokenId];
-        return macaNames[macaId];
+        uint8 almondId = almondIds[_tokenId];
+        return almondNames[almondId];
     }
 
     /**
@@ -2475,45 +2475,45 @@ contract MacaronSwapMacas is ERC721, Ownable {
     function mint(
         address _to,
         string calldata _tokenURI,
-        uint8 _macaId
+        uint8 _almondId
     ) external onlyOwner returns (uint256) {
         uint256 newId = _tokenIds.current();
         _tokenIds.increment();
-        macaIds[newId] = _macaId;
-        bunnyCount[_macaId] = bunnyCount[_macaId].add(1);
+        almondIds[newId] = _almondId;
+        bunnyCount[_almondId] = bunnyCount[_almondId].add(1);
         _mint(_to, newId);
         _setTokenURI(newId, _tokenURI);
         return newId;
     }
 
     /**
-     * @dev Set a unique name for each macaId. It is supposed to be called once.
+     * @dev Set a unique name for each almondId. It is supposed to be called once.
      */
-    function setMacaName(uint8 _macaId, string calldata _name)
+    function setAlmondName(uint8 _almondId, string calldata _name)
         external
         onlyOwner
     {
-        macaNames[_macaId] = _name;
+        almondNames[_almondId] = _name;
     }
 
     /**
      * @dev Burn a NFT token. Callable by owner only.
      */
     function burn(uint256 _tokenId) external onlyOwner {
-        uint8 bunnyIdBurnt = macaIds[_tokenId];
+        uint8 bunnyIdBurnt = almondIds[_tokenId];
         bunnyCount[bunnyIdBurnt] = bunnyCount[bunnyIdBurnt].sub(1);
         bunnyBurnCount[bunnyIdBurnt] = bunnyBurnCount[bunnyIdBurnt].add(1);
         _burn(_tokenId);
     }
 }
 
-/** @title MacaMintingStation.
+/** @title AlmondMintingStation.
 @dev It is a contract that allow different factories to mint
-MacaronSwap Collectibles/Maca.
+MacaronSwap Collectibles/Almond.
 */
 
-contract MacaMintingStation is AccessControl {
-    MacaronSwapMacas public macaronSwapMacas;
+contract AlmondMintingStation is AccessControl {
+    MacaronAlmonds public macaronAlmonds;
 
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
@@ -2529,23 +2529,23 @@ contract MacaMintingStation is AccessControl {
         _;
     }
 
-    constructor(MacaronSwapMacas _macaronSwapMacas) public {
-        macaronSwapMacas = _macaronSwapMacas;
+    constructor(MacaronAlmonds _macaronAlmonds) public {
+        macaronAlmonds = _macaronAlmonds;
         _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
     }
 
     /**
-     * @dev Mint NFTs from the MacaronSwapMacas contract.
-     * Users can specify what macaId they want to mint. Users can claim once.
+     * @dev Mint NFTs from the MacaronAlmonds contract.
+     * Users can specify what almondId they want to mint. Users can claim once.
      * There is a limit on how many are distributed. It requires MACARON balance to be > 0.
      */
     function mintCollectible(
         address _tokenReceiver,
         string calldata _tokenURI,
-        uint8 _macaId
+        uint8 _almondId
     ) external onlyMinter returns (uint256) {
         uint256 tokenId =
-            macaronSwapMacas.mint(_tokenReceiver, _tokenURI, _macaId);
+            macaronAlmonds.mint(_tokenReceiver, _tokenURI, _almondId);
         return tokenId;
     }
 
@@ -2553,11 +2553,11 @@ contract MacaMintingStation is AccessControl {
      * @dev Set up names for bunnies.
      * Only the main admins can set it.
      */
-    function setMacaName(uint8 _macaId, string calldata _macaName)
+    function setAlmondName(uint8 _almondId, string calldata _almondName)
         external
         onlyOwner
     {
-        macaronSwapMacas.setMacaName(_macaId, _macaName);
+        macaronAlmonds.setAlmondName(_almondId, _almondName);
     }
 
     /**
@@ -2566,7 +2566,7 @@ contract MacaMintingStation is AccessControl {
      * Only the main admins can set it.
      */
     function changeOwnershipNFTContract(address _newOwner) external onlyOwner {
-        macaronSwapMacas.transferOwnership(_newOwner);
+        macaronAlmonds.transferOwnership(_newOwner);
     }
 }
 
@@ -2696,29 +2696,29 @@ library SafeBEP20 {
     }
 }
 
-contract MacaNFTDrop1 is Ownable {
+contract AlmondSpecialV1 is Ownable {
     using SafeBEP20 for IBEP20;
     using SafeMath for uint256;
 
-    MacaMintingStation public macaMintingStation;
+    AlmondMintingStation public almondMintingStation;
     
     IBEP20 public macaronToken;
 
     uint256 public maxViewLength;
-    uint256 public numberDifferentMacas;
+    uint256 public numberDifferentAlmonds;
 
     mapping(address => mapping(uint8 => bool)) public isEligible;
 
-    // Map if address for a macaId has already claimed a NFT
+    // Map if address for a almondId has already claimed a NFT
     mapping(address => mapping(uint8 => bool)) public hasClaimed;
 
-    // Map if macaId to its characteristics
-    mapping(uint8 => Maca) public macaCharacteristics;
+    // Map if almondId to its characteristics
+    mapping(uint8 => Almond) public almondCharacteristics;
 
     // Number of previous series (i.e. different visuals)
     uint8 private constant previousNumberBunnyIds = 10;
 
-    struct Maca {
+    struct Almond {
         string tokenURI; // e.g. ipfsHash/hiccups.json
         uint256 thresholdUser; // e.g. 1900 or 100000
         uint256 macaronCost;
@@ -2726,86 +2726,86 @@ contract MacaNFTDrop1 is Ownable {
         bool isCreated;
     }
 
-    // Event to notify a new maca is mintable
-    event MacaAdd(
-        uint8 indexed macaId,
+    // Event to notify a new almond is mintable
+    event AlmondAdd(
+        uint8 indexed almondId,
         uint256 thresholdUser,
         uint256 costMacaron
     );
 
     // Event to notify one of the bunnies' requirements to mint differ
-    event MacaChange(
-        uint8 indexed macaId,
+    event AlmondChange(
+        uint8 indexed almondId,
         uint256 thresholdUser,
         uint256 costMacaron,
         bool isActive
     );
 
     // Event to notify when NFT is successfully minted
-    event MacaMint(
+    event AlmondMint(
         address indexed to,
         uint256 indexed tokenId,
-        uint8 indexed macaId
+        uint8 indexed almondId
     );
 
     constructor(
-        MacaMintingStation _macaMintingStation,
+        AlmondMintingStation _almondMintingStation,
         IBEP20 _macaronToken,
         uint256 _maxViewLength
     ) public {
-        macaMintingStation = _macaMintingStation;
+        almondMintingStation = _almondMintingStation;
         macaronToken = _macaronToken;
         maxViewLength = _maxViewLength;
     }
 
     /**
-     * @dev Mint NFTs from the MacaMintingStation contract.
+     * @dev Mint NFTs from the AlmondMintingStation contract.
      * Users can claim once.
      */
-    function mintNFT(uint8 _macaId) external {
-        // Check that the _macaId is within boundary
-        require(_macaId >= previousNumberBunnyIds, "ERR_ID_LOW");
-        require(macaCharacteristics[_macaId].isActive, "ERR_ID_INVALID");
+    function mintNFT(uint8 _almondId) external {
+        // Check that the _almondId is within boundary
+        require(_almondId >= previousNumberBunnyIds, "ERR_ID_LOW");
+        require(almondCharacteristics[_almondId].isActive, "ERR_ID_INVALID");
 
         address senderAddress = _msgSender();
 
         // 1. Check _msgSender() has not claimed
-        require(!hasClaimed[senderAddress][_macaId], "ERR_HAS_CLAIMED");
+        require(!hasClaimed[senderAddress][_almondId], "ERR_HAS_CLAIMED");
 
-        require(isEligible[senderAddress][_macaId], "ERR_USER_NOT_ELIGIBLE");
+        require(isEligible[senderAddress][_almondId], "ERR_USER_NOT_ELIGIBLE");
 
-        // Check if there is any cost associated with getting the maca
-        if (macaCharacteristics[_macaId].macaronCost > 0) {
+        // Check if there is any cost associated with getting the almond
+        if (almondCharacteristics[_almondId].macaronCost > 0) {
             macaronToken.safeTransferFrom(
                 senderAddress,
                 address(this),
-                macaCharacteristics[_macaId].macaronCost
+                almondCharacteristics[_almondId].macaronCost
             );
         }
 
         // Update that _msgSender() has claimed
-        hasClaimed[senderAddress][_macaId] = true;
+        hasClaimed[senderAddress][_almondId] = true;
 
         uint256 tokenId =
-            macaMintingStation.mintCollectible(
+            almondMintingStation.mintCollectible(
                 senderAddress,
-                macaCharacteristics[_macaId].tokenURI,
-                _macaId
+                almondCharacteristics[_almondId].tokenURI,
+                _almondId
             );
 
-        emit MacaMint(senderAddress, tokenId, _macaId);
+        emit AlmondMint(senderAddress, tokenId, _almondId);
     }
 
-    function addBunny(
-        uint8 _macaId,
+    function addAlmond(
+        uint8 _almondId,
         string calldata _tokenURI,
         uint256 _thresholdUser,
         uint256 _macaronCost
     ) external onlyOwner {
-        require(!macaCharacteristics[_macaId].isCreated, "ERR_CREATED");
-        require(_macaId >= previousNumberBunnyIds, "ERR_ID_LOW_2");
+        require(!almondCharacteristics[_almondId].isCreated, "ERR_CREATED");
+        require(_almondId >= previousNumberBunnyIds, "ERR_ID_LOW_2");
 
-        macaCharacteristics[_macaId] = Maca({
+        almondCharacteristics[_almondId] = Almond({
             tokenURI: _tokenURI,
             thresholdUser: _thresholdUser,
             macaronCost: _macaronCost,
@@ -2813,9 +2813,9 @@ contract MacaNFTDrop1 is Ownable {
             isCreated: true
         });
 
-        numberDifferentMacas = numberDifferentMacas.add(1);
+        numberDifferentAlmonds = numberDifferentAlmonds.add(1);
 
-        emit MacaAdd(_macaId, _thresholdUser, _macaronCost);
+        emit AlmondAdd(_almondId, _thresholdUser, _macaronCost);
     }
 
     /**
@@ -2826,47 +2826,47 @@ contract MacaNFTDrop1 is Ownable {
         macaronToken.safeTransfer(_msgSender(), _amount);
     }
 
-    function updateMaca(
-        uint8 _macaId,
+    function updateAlmond(
+        uint8 _almondId,
         uint256 _thresholdUser,
         uint256 _macaronCost,
         bool _isActive
     ) external onlyOwner {
-        require(macaCharacteristics[_macaId].isCreated, "ERR_NOT_CREATED");
-        macaCharacteristics[_macaId].thresholdUser = _thresholdUser;
-        macaCharacteristics[_macaId].macaronCost = _macaronCost;
-        macaCharacteristics[_macaId].isActive = _isActive;
+        require(almondCharacteristics[_almondId].isCreated, "ERR_NOT_CREATED");
+        almondCharacteristics[_almondId].thresholdUser = _thresholdUser;
+        almondCharacteristics[_almondId].macaronCost = _macaronCost;
+        almondCharacteristics[_almondId].isActive = _isActive;
 
-        emit MacaChange(_macaId, _thresholdUser, _macaronCost, _isActive);
+        emit AlmondChange(_almondId, _thresholdUser, _macaronCost, _isActive);
     }
 
     function updateMaxViewLength(uint256 _newMaxViewLength) external onlyOwner {
         maxViewLength = _newMaxViewLength;
     }
 
-    function canClaimSingle(address _userAddress, uint8 _macaId)
+    function canClaimSingle(address _userAddress, uint8 _almondId)
         external
         view
         returns (bool)
     {
-        if (isEligible[_userAddress][_macaId]) {
+        if (isEligible[_userAddress][_almondId]) {
             return false;
         } else {
-            return _canClaim(_userAddress, _macaId);
+            return _canClaim(_userAddress, _almondId);
         }
     }
 
-    function canClaimMultiple(address _userAddress, uint8[] calldata _macaIds)
+    function canClaimMultiple(address _userAddress, uint8[] calldata _almondIds)
         external
         view
         returns (bool[] memory)
     {
-        require(_macaIds.length <= maxViewLength, "ERR_LENGTH_VIEW");
+        require(_almondIds.length <= maxViewLength, "ERR_LENGTH_VIEW");
 
-        bool[] memory responses = new bool[](_macaIds.length);
+        bool[] memory responses = new bool[](_almondIds.length);
 
-        for (uint256 i = 0; i < _macaIds.length; i++) {
-            bool claimStatus = _canClaim(_userAddress, _macaIds[i]);
+        for (uint256 i = 0; i < _almondIds.length; i++) {
+            bool claimStatus = _canClaim(_userAddress, _almondIds[i]);
             responses[i] = claimStatus;
         }
         return responses;
@@ -2878,13 +2878,13 @@ contract MacaNFTDrop1 is Ownable {
      */
     function _canClaim(
         address _userAddress,
-        uint8 _macaId
+        uint8 _almondId
     ) internal view returns (bool) {
-        bool bunnyActive = macaCharacteristics[_macaId].isActive;
+        bool bunnyActive = almondCharacteristics[_almondId].isActive;
 
-        if (!isEligible[_userAddress][_macaId]) {
+        if (!isEligible[_userAddress][_almondId]) {
             return false;
-        } else if (hasClaimed[_userAddress][_macaId]) {
+        } else if (hasClaimed[_userAddress][_almondId]) {
             return false;
         } else if (!bunnyActive) {
             return false;
