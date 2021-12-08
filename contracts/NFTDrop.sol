@@ -2421,10 +2421,10 @@ contract MacaronAlmonds is ERC721, Ownable {
     using Counters for Counters.Counter;
 
     // Map the number of tokens per almondId
-    mapping(uint8 => uint256) public bunnyCount;
+    mapping(uint8 => uint256) public almondCount;
 
     // Map the number of tokens burnt per almondId
-    mapping(uint8 => uint256) public bunnyBurnCount;
+    mapping(uint8 => uint256) public almondBurnCount;
 
     // Used for generating the tokenId of new NFT minted
     Counters.Counter private _tokenIds;
@@ -2432,7 +2432,7 @@ contract MacaronAlmonds is ERC721, Ownable {
     // Map the almondId for each tokenId
     mapping(uint256 => uint8) private almondIds;
 
-    // Map the bunnyName for a tokenId
+    // Map the almondName for a tokenId
     mapping(uint8 => string) private almondNames;
 
     constructor(string memory _baseURI) public ERC721("MacaronSwap Almond", "PB") {
@@ -2447,7 +2447,7 @@ contract MacaronAlmonds is ERC721, Ownable {
     }
 
     /**
-     * @dev Get the associated bunnyName for a specific almondId.
+     * @dev Get the associated almondName for a specific almondId.
      */
     function getAlmondName(uint8 _almondId)
         external
@@ -2458,7 +2458,7 @@ contract MacaronAlmonds is ERC721, Ownable {
     }
 
     /**
-     * @dev Get the associated bunnyName for a unique tokenId.
+     * @dev Get the associated almondName for a unique tokenId.
      */
     function getAlmondNameOfTokenId(uint256 _tokenId)
         external
@@ -2480,7 +2480,7 @@ contract MacaronAlmonds is ERC721, Ownable {
         uint256 newId = _tokenIds.current();
         _tokenIds.increment();
         almondIds[newId] = _almondId;
-        bunnyCount[_almondId] = bunnyCount[_almondId].add(1);
+        almondCount[_almondId] = almondCount[_almondId].add(1);
         _mint(_to, newId);
         _setTokenURI(newId, _tokenURI);
         return newId;
@@ -2500,9 +2500,9 @@ contract MacaronAlmonds is ERC721, Ownable {
      * @dev Burn a NFT token. Callable by owner only.
      */
     function burn(uint256 _tokenId) external onlyOwner {
-        uint8 bunnyIdBurnt = almondIds[_tokenId];
-        bunnyCount[bunnyIdBurnt] = bunnyCount[bunnyIdBurnt].sub(1);
-        bunnyBurnCount[bunnyIdBurnt] = bunnyBurnCount[bunnyIdBurnt].add(1);
+        uint8 almondIdBurnt = almondIds[_tokenId];
+        almondCount[almondIdBurnt] = almondCount[almondIdBurnt].sub(1);
+        almondBurnCount[almondIdBurnt] = almondBurnCount[almondIdBurnt].add(1);
         _burn(_tokenId);
     }
 }
@@ -2550,7 +2550,7 @@ contract AlmondMintingStation is AccessControl {
     }
 
     /**
-     * @dev Set up names for bunnies.
+     * @dev Set up names for almonds.
      * Only the main admins can set it.
      */
     function setAlmondName(uint8 _almondId, string calldata _almondName)
@@ -2716,7 +2716,7 @@ contract AlmondSpecialV1 is Ownable {
     mapping(uint8 => Almond) public almondCharacteristics;
 
     // Number of previous series (i.e. different visuals)
-    uint8 private constant previousNumberBunnyIds = 10;
+    uint8 private constant previousNumberAlmondIds = 10;
 
     struct Almond {
         string tokenURI; // e.g. ipfsHash/hiccups.json
@@ -2733,7 +2733,7 @@ contract AlmondSpecialV1 is Ownable {
         uint256 costMacaron
     );
 
-    // Event to notify one of the bunnies' requirements to mint differ
+    // Event to notify one of the almonds' requirements to mint differ
     event AlmondChange(
         uint8 indexed almondId,
         uint256 thresholdUser,
@@ -2764,7 +2764,7 @@ contract AlmondSpecialV1 is Ownable {
      */
     function mintNFT(uint8 _almondId) external {
         // Check that the _almondId is within boundary
-        require(_almondId >= previousNumberBunnyIds, "ERR_ID_LOW");
+        require(_almondId >= previousNumberAlmondIds, "ERR_ID_LOW");
         require(almondCharacteristics[_almondId].isActive, "ERR_ID_INVALID");
 
         address senderAddress = _msgSender();
@@ -2803,7 +2803,7 @@ contract AlmondSpecialV1 is Ownable {
         uint256 _macaronCost
     ) external onlyOwner {
         require(!almondCharacteristics[_almondId].isCreated, "ERR_CREATED");
-        require(_almondId >= previousNumberBunnyIds, "ERR_ID_LOW_2");
+        require(_almondId >= previousNumberAlmondIds, "ERR_ID_LOW_2");
 
         almondCharacteristics[_almondId] = Almond({
             tokenURI: _tokenURI,
@@ -2880,13 +2880,13 @@ contract AlmondSpecialV1 is Ownable {
         address _userAddress,
         uint8 _almondId
     ) internal view returns (bool) {
-        bool bunnyActive = almondCharacteristics[_almondId].isActive;
+        bool almondActive = almondCharacteristics[_almondId].isActive;
 
         if (!isEligible[_userAddress][_almondId]) {
             return false;
         } else if (hasClaimed[_userAddress][_almondId]) {
             return false;
-        } else if (!bunnyActive) {
+        } else if (!almondActive) {
             return false;
         } else {
             return true;
