@@ -2732,7 +2732,6 @@ contract AlmondSpecialV1 is Ownable {
 
     struct Almond {
         string tokenURI; // e.g. ipfsHash/hiccups.json
-        uint256 thresholdUser; // e.g. 1900 or 100000
         uint256 macaronCost;
         bool isActive;
         bool isCreated;
@@ -2741,14 +2740,12 @@ contract AlmondSpecialV1 is Ownable {
     // Event to notify a new almond is mintable
     event AlmondAdd(
         uint8 indexed almondId,
-        uint256 thresholdUser,
         uint256 costMacaron
     );
 
     // Event to notify one of the almonds' requirements to mint differ
     event AlmondChange(
         uint8 indexed almondId,
-        uint256 thresholdUser,
         uint256 costMacaron,
         bool isActive
     );
@@ -2811,7 +2808,6 @@ contract AlmondSpecialV1 is Ownable {
     function addAlmond(
         uint8 _almondId,
         string calldata _tokenURI,
-        uint256 _thresholdUser,
         uint256 _macaronCost
     ) external onlyOwner {
         require(!almondCharacteristics[_almondId].isCreated, "ERR_CREATED");
@@ -2819,7 +2815,6 @@ contract AlmondSpecialV1 is Ownable {
 
         almondCharacteristics[_almondId] = Almond({
             tokenURI: _tokenURI,
-            thresholdUser: _thresholdUser,
             macaronCost: _macaronCost,
             isActive: true,
             isCreated: true
@@ -2827,7 +2822,7 @@ contract AlmondSpecialV1 is Ownable {
 
         numberDifferentAlmonds = numberDifferentAlmonds.add(1);
 
-        emit AlmondAdd(_almondId, _thresholdUser, _macaronCost);
+        emit AlmondAdd(_almondId, _macaronCost);
     }
 
     /**
@@ -2840,16 +2835,14 @@ contract AlmondSpecialV1 is Ownable {
 
     function updateAlmond(
         uint8 _almondId,
-        uint256 _thresholdUser,
         uint256 _macaronCost,
         bool _isActive
     ) external onlyOwner {
         require(almondCharacteristics[_almondId].isCreated, "ERR_NOT_CREATED");
-        almondCharacteristics[_almondId].thresholdUser = _thresholdUser;
         almondCharacteristics[_almondId].macaronCost = _macaronCost;
         almondCharacteristics[_almondId].isActive = _isActive;
 
-        emit AlmondChange(_almondId, _thresholdUser, _macaronCost, _isActive);
+        emit AlmondChange(_almondId, _macaronCost, _isActive);
     }
 
     function updateMaxViewLength(uint256 _newMaxViewLength) external onlyOwner {
