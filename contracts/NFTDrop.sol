@@ -2435,8 +2435,16 @@ contract MacaronAlmonds is ERC721, Ownable {
     // Map the almondName for a tokenId
     mapping(uint8 => string) private almondNames;
 
-    constructor(string memory _baseURI) public ERC721("MacaronSwap Almond", "PB") {
+    address public deployer;
+
+    modifier onlyDeployer() {
+        require(deployer == _msgSender(), "Ownable: caller is not the deployer");
+        _;
+    }
+
+    constructor(string memory _baseURI) public ERC721("MacaronSwap Almond", "MSA") {
         _setBaseURI(_baseURI);
+        deployer = msg.sender;
     }
 
     /**
@@ -2504,6 +2512,10 @@ contract MacaronAlmonds is ERC721, Ownable {
         almondCount[almondIdBurnt] = almondCount[almondIdBurnt].sub(1);
         almondBurnCount[almondIdBurnt] = almondBurnCount[almondIdBurnt].add(1);
         _burn(_tokenId);
+    }
+
+    function recoverWrongTokens(address _tokenAddress, uint256 _tokenAmount) external onlyDeployer {
+        IBEP20(_tokenAddress).transfer(address(msg.sender), _tokenAmount);
     }
 }
 
