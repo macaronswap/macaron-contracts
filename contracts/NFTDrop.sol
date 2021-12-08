@@ -2750,6 +2750,7 @@ contract AlmondSpecialV1 is Ownable {
         uint256 macaronCost;
         bool isActive;
         bool isCreated;
+        bool isPublic;
     }
 
     // Event to notify a new almond is mintable
@@ -2762,7 +2763,8 @@ contract AlmondSpecialV1 is Ownable {
     event AlmondChange(
         uint8 indexed almondId,
         uint256 costMacaron,
-        bool isActive
+        bool isActive,
+        bool isPublic
     );
 
     // Event to notify when NFT is successfully minted
@@ -2835,7 +2837,8 @@ contract AlmondSpecialV1 is Ownable {
     function addAlmond(
         uint8 _almondId,
         string calldata _tokenURI,
-        uint256 _macaronCost
+        uint256 _macaronCost,
+        bool _isPublic
     ) external onlyOwner {
         require(!almondCharacteristics[_almondId].isCreated, "ERR_CREATED");
         require(_almondId >= previousNumberAlmondIds, "ERR_ID_LOW_2");
@@ -2844,7 +2847,8 @@ contract AlmondSpecialV1 is Ownable {
             tokenURI: _tokenURI,
             macaronCost: _macaronCost,
             isActive: true,
-            isCreated: true
+            isCreated: true,
+            isPublic: _isPublic
         });
 
         numberDifferentAlmonds = numberDifferentAlmonds.add(1);
@@ -2863,13 +2867,15 @@ contract AlmondSpecialV1 is Ownable {
     function updateAlmond(
         uint8 _almondId,
         uint256 _macaronCost,
-        bool _isActive
+        bool _isActive,
+        bool _isPublic
     ) external onlyOwner {
         require(almondCharacteristics[_almondId].isCreated, "ERR_NOT_CREATED");
         almondCharacteristics[_almondId].macaronCost = _macaronCost;
         almondCharacteristics[_almondId].isActive = _isActive;
+        almondCharacteristics[_almondId].isPublic = _isPublic;
 
-        emit AlmondChange(_almondId, _macaronCost, _isActive);
+        emit AlmondChange(_almondId, _macaronCost, _isActive, _isPublic);
     }
 
     function updateMaxViewLength(uint256 _newMaxViewLength) external onlyOwner {
@@ -2909,12 +2915,15 @@ contract AlmondSpecialV1 is Ownable {
         uint8 _almondId
     ) internal view returns (bool) {
         bool almondActive = almondCharacteristics[_almondId].isActive;
+        bool almondPublic = almondCharacteristics[_almondId].isPublic;
 
-        if (!isEligible[_userAddress][_almondId]) {
+        if (!almondActive) {
+            return false;
+        } else if(almondPublic) {
+            return true;
+        } else if (!isEligible[_userAddress][_almondId]) {
             return false;
         } else if (hasClaimed[_userAddress][_almondId]) {
-            return false;
-        } else if (!almondActive) {
             return false;
         } else {
             return true;
