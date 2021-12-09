@@ -2751,6 +2751,8 @@ contract AlmondSpecialV1 is Ownable {
         bool isActive;
         bool isCreated;
         bool isPublic;
+        uint256 maxMintCount;
+        uint256 mintedCount;
     }
 
     // Event to notify a new almond is mintable
@@ -2764,7 +2766,8 @@ contract AlmondSpecialV1 is Ownable {
         uint8 indexed almondId,
         uint256 costMacaron,
         bool isActive,
-        bool isPublic
+        bool isPublic,
+        uint256 maxMintCount
     );
 
     // Event to notify when NFT is successfully minted
@@ -2831,6 +2834,8 @@ contract AlmondSpecialV1 is Ownable {
                 _almondId
             );
 
+        almondCharacteristics[_almondId].mintedCount++;
+
         emit AlmondMint(senderAddress, tokenId, _almondId);
     }
 
@@ -2838,7 +2843,8 @@ contract AlmondSpecialV1 is Ownable {
         uint8 _almondId,
         string calldata _tokenURI,
         uint256 _macaronCost,
-        bool _isPublic
+        bool _isPublic,
+        uint256 _maxMintCount
     ) external onlyOwner {
         require(!almondCharacteristics[_almondId].isCreated, "ERR_CREATED");
         require(_almondId >= previousNumberAlmondIds, "ERR_ID_LOW_2");
@@ -2848,7 +2854,9 @@ contract AlmondSpecialV1 is Ownable {
             macaronCost: _macaronCost,
             isActive: true,
             isCreated: true,
-            isPublic: _isPublic
+            isPublic: _isPublic,
+            maxMintCount: _maxMintCount,
+            mintedCount: 0
         });
 
         numberDifferentAlmonds = numberDifferentAlmonds.add(1);
@@ -2868,14 +2876,16 @@ contract AlmondSpecialV1 is Ownable {
         uint8 _almondId,
         uint256 _macaronCost,
         bool _isActive,
-        bool _isPublic
+        bool _isPublic,
+        uint256 _maxMintCount
     ) external onlyOwner {
         require(almondCharacteristics[_almondId].isCreated, "ERR_NOT_CREATED");
         almondCharacteristics[_almondId].macaronCost = _macaronCost;
         almondCharacteristics[_almondId].isActive = _isActive;
         almondCharacteristics[_almondId].isPublic = _isPublic;
+        almondCharacteristics[_almondId].maxMintCount = _maxMintCount;
 
-        emit AlmondChange(_almondId, _macaronCost, _isActive, _isPublic);
+        emit AlmondChange(_almondId, _macaronCost, _isActive, _isPublic, _maxMintCount);
     }
 
     function updateMaxViewLength(uint256 _newMaxViewLength) external onlyOwner {
@@ -2916,8 +2926,12 @@ contract AlmondSpecialV1 is Ownable {
     ) internal view returns (bool) {
         bool almondActive = almondCharacteristics[_almondId].isActive;
         bool almondPublic = almondCharacteristics[_almondId].isPublic;
+        uint256 almondMaxMintCount = almondCharacteristics[_almondId].maxMintCount;
+        uint256 almondMintedCount = almondCharacteristics[_almondId].mintedCount;
 
         if (!almondActive) {
+            return false;
+        } else if(almondMintedCount >= almondMaxMintCount) {
             return false;
         } else if(almondPublic) {
             return true;
