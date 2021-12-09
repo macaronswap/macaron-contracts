@@ -2810,7 +2810,7 @@ contract AlmondSpecialV1 is Ownable {
         // 1. Check _msgSender() has not claimed
         require(!hasClaimed[senderAddress][_almondId], "ERR_HAS_CLAIMED");
 
-        require(isEligible[senderAddress][_almondId], "ERR_USER_NOT_ELIGIBLE");
+        require(_canClaim(msg.sender, _almondId), "ERR_USER_NOT_ELIGIBLE");
 
         // Check if there is any cost associated with getting the almond
         if (almondCharacteristics[_almondId].macaronCost > 0) {
