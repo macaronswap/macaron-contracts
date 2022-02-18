@@ -2933,11 +2933,11 @@ contract AlmondSpecialV1 is Ownable {
             return false;
         } else if(almondMintedCount >= almondMaxMintCount) {
             return false;
+        } else if (hasClaimed[_userAddress][_almondId]) {
+            return false;
         } else if(almondPublic) {
             return true;
         } else if (!isEligible[_userAddress][_almondId]) {
-            return false;
-        } else if (hasClaimed[_userAddress][_almondId]) {
             return false;
         } else {
             return true;
@@ -2946,5 +2946,60 @@ contract AlmondSpecialV1 is Ownable {
 
     function recoverWrongTokens(address _tokenAddress, uint256 _tokenAmount) external onlyOwner {
         IBEP20(_tokenAddress).transfer(address(msg.sender), _tokenAmount);
+    }
+}
+
+contract AlmondBurner is Ownable {
+    MacaronAlmonds public macaronAlmonds;
+    AlmondSpecialV1 public almondSpecialV1;
+    uint8 public oldAlmondId;  // 3
+    uint8 public newAlmondId;  // 4
+    mapping(address => bool) public isEligible;
+    address burnAddress = 0x000000000000000000000000000000000000dEaD;
+
+    constructor(MacaronAlmonds _macaronAlmonds, AlmondSpecialV1 _almondSpecialV1, uint8 _oldAlmondId, uint8 _newAlmondId) public {
+        macaronAlmonds = _macaronAlmonds;
+        almondSpecialV1 = _almondSpecialV1;
+        oldAlmondId = _oldAlmondId;
+        newAlmondId = _newAlmondId;
+    }
+
+    function isUsable() external view returns(bool) {
+        return almondSpecialV1.owner() == address(this);
+    }
+
+    function setMacaronAlmonds(MacaronAlmonds _macaronAlmonds) external onlyOwner {
+        macaronAlmonds = _macaronAlmonds;
+    }
+
+    function setAlmondSpecialV1(AlmondSpecialV1 _almondSpecialV1) external onlyOwner {
+        almondSpecialV1 = _almondSpecialV1;
+    }
+
+    function setOldAlmondId(uint8 _oldAlmondId) external onlyOwner {
+        oldAlmondId = _oldAlmondId;
+    }
+
+    function setNewAlmondId(uint8 _newAlmondId) external onlyOwner {
+        newAlmondId = _newAlmondId;
+    }
+
+    function setEligibleMultiple(address[] memory _addresses, bool _state) external onlyOwner {
+        for(uint256 i = 0; i < _addresses.length; i++) {
+            isEligible[_addresses[i]] = _state;
+        }
+    }
+
+    function changeOwnershipAlmondSpecial(address _newOwner) external onlyOwner {
+        almondSpecialV1.transferOwnership(_newOwner);
+    }
+
+    function burn(uint256 _tokenId) external {
+        require(macaronAlmonds.getAlmondId(_tokenId) == oldAlmondId, "Wrong old almond ID!");
+        macaronAlmonds.transferFrom(msg.sender, burnAddress, _tokenId);
+        if(isEligible[msg.sender]) {
+            almondSpecialV1.setEligible(msg.sender, newAlmondId, true);
+            isEligible[msg.sender] = false;
+        }
     }
 }
