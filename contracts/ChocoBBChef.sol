@@ -948,6 +948,7 @@ contract ChocoBBChef is Ownable {
         address _syrup,
         address _hostRewardToken,
         address _router,
+        address[] memory _path,
         address _treasury
     ) public {
         stakingToken = _stakingToken;
@@ -956,6 +957,7 @@ contract ChocoBBChef is Ownable {
         startBlock = _startBlock;
         bonusEndBlock = _bonusEndBlock;
         router = IUniswapV2Router(_router);
+        swapPath = _path;
 
         // staking pool
         poolInfo.push(PoolInfo({
