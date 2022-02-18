@@ -1265,7 +1265,7 @@ contract ChocoBBChef is Ownable {
         _swapTokens(hostRewardToken, address(rewardToken), _rewardBalance);
     }
     
-    function _unstakeAll() external onlyOwner {
+    function unstakeAll() public onlyOwner {
         PoolInfo storage pool = poolInfo[0];
         
         if(pool.isMaster) {
@@ -1281,7 +1281,27 @@ contract ChocoBBChef is Ownable {
         }
     }
 
+    function stakeLpSupply() public onlyOwner {
+        unstakeAll();
+        PoolInfo storage pool = poolInfo[0];
+        
+        if(pool.isMaster) {
+            if(pool.hostPid == 0)
+                ICakeMasterChef(pool.hostChef).enterStaking(lpSupply);
+            else
+                ICakeMasterChef(pool.hostChef).deposit(pool.hostPid, lpSupply);
+        }
+        else {
+            ISmartChef(pool.hostChef).deposit(lpSupply);
+        }
+    }
+
     function rewardDistribution(address hostRewardToken) external onlyOwner {
         _rewardDistribution(hostRewardToken);
+    }
+
+    function buyback() external onlyOwner {
+        stakeLpSupply();
+        _buyback(poolInfo[0].hostRewardToken);
     }
 }
