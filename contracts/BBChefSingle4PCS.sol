@@ -642,12 +642,6 @@ library Address {
     }
 }
 
-interface ICakeStrategy {
-    function deposit(uint256 _amount) external;
-    function withdraw(uint256 _amount) external;
-    function withdrawToController(uint256 _amount) external;
-}
-
 interface ICakeMasterChef {
     function deposit(uint256 _poolId, uint256 _amount) external;
 
@@ -880,7 +874,7 @@ interface IUniswapV2Router {
     ) external;
 }
 
-contract ChocoBBChef is Ownable {
+contract BBChefSingle is Ownable {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
 
