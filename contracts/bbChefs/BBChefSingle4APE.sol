@@ -928,7 +928,6 @@ contract BBChefSingle4APE is Ownable {
     IUniswapV2Router public router2;
     address[] public swapPath2;
 
-
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 amount);
@@ -946,8 +945,6 @@ contract BBChefSingle4APE is Ownable {
         address _hostRewardToken,
         address _router,
         address[] memory _path,
-        address _router2,
-        address[] memory _path2,
         address _treasury
     ) public {
         stakingToken = _stakingToken;
@@ -957,8 +954,6 @@ contract BBChefSingle4APE is Ownable {
         bonusEndBlock = _bonusEndBlock;
         router = IUniswapV2Router(_router);
         swapPath = _path;
-        router2 = IUniswapV2Router(_router2);
-        swapPath2 = _path2;
 
         // staking pool
         poolInfo.push(PoolInfo({
@@ -1016,8 +1011,8 @@ contract BBChefSingle4APE is Ownable {
     function setRouter2(IUniswapV2Router _router) external onlyOwner {
         router2 = _router;
 
-        PoolInfo storage pool = poolInfo[0];
-        IBEP20(pool.hostRewardToken).safeApprove(address(swapPath2[0]), type(uint256).max);
+        require(swapPath2[0] != address(0), "swapPath2[0] can't be 0x");
+        IBEP20(swapPath2[0]).safeApprove(address(router2), type(uint256).max);
     }
 
     function setRouterPath(address[] memory _path) external onlyOwner {
@@ -1046,7 +1041,11 @@ contract BBChefSingle4APE is Ownable {
         uint256[] memory amountsOuts = router.getAmountsOut(_amount, path);
         uint256 lastAmountOut = amountsOuts[amountsOuts.length-1];
         uint256 amountOutMin = lastAmountOut.sub(lastAmountOut.div(100));   // 1% slippage tolerance
-        router.swapExactTokensForTokens(_amount, amountOutMin, path, address(this), now);
+        uint256[] memory amounts = router.swapExactTokensForTokens(_amount, amountOutMin, path, address(this), now);
+
+        if(address(router2) != address(0)) {
+            _swapTokens2(path[path.length-1], address(rewardToken), amounts[amounts.length-1]);
+        }
     }
 
     function _swapTokens2(address _input, address _output, uint256 _amount) internal {
@@ -1269,6 +1268,12 @@ contract BBChefSingle4APE is Ownable {
             uint256 rewardPerBlockAsHostRewardToken = hostRewardPerBlock.mul(thisStakedAmount).div(totalStakedAmount);
             uint256[] memory amountsOuts = router.getAmountsOut(rewardPerBlockAsHostRewardToken, swapPath);
             uint256 rewardPerBlockAsRewardToken = amountsOuts[amountsOuts.length-1];
+
+            if(address(router2) != address(0)) {
+                uint256[] memory amountsOuts2 = router2.getAmountsOut(amountsOuts[amountsOuts.length-1], swapPath2);
+                rewardPerBlockAsRewardToken = amountsOuts2[amountsOuts2.length-1];
+            }
+
             if(rewardPerBlockAsRewardToken > 0)
                 rewardPerBlock = rewardPerBlockAsRewardToken.mul(99).div(100);
             else
@@ -1293,7 +1298,7 @@ contract BBChefSingle4APE is Ownable {
         require(_stakedAmount == lpSupply, "Staked amount on host and lpSupply not match!");
 
         uint256 _rewardBalance = IBEP20(hostRewardToken).balanceOf(address(this));
-        _swapTokens(hostRewardToken, address(rewardToken), _rewardBalance);
+        _swapTokens1(hostRewardToken, address(rewardToken), _rewardBalance);
     }
     
     function unstakeAll() public onlyOwner {
