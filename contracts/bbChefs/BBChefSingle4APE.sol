@@ -922,6 +922,8 @@ contract BBChefSingle4APE is Ownable {
 
     uint256 public hostRewardDistPercent = 1; // 1%
 
+    uint256 public routerLoss = 5; // 5%
+
     // About BB
     IUniswapV2Router public router;
     address[] public swapPath;
@@ -987,6 +989,10 @@ contract BBChefSingle4APE is Ownable {
         bonusEndBlock = block.number;
     }
     
+    function setRouterLoss(uint256 _routerLoss) external onlyOwner {
+        routerLoss = _routerLoss;
+    }
+
     function setRewardEndBlock(uint256 _bonusEndBlock) external onlyOwner {
         bonusEndBlock = _bonusEndBlock;
     }
@@ -1275,7 +1281,7 @@ contract BBChefSingle4APE is Ownable {
             }
 
             if(rewardPerBlockAsRewardToken > 0)
-                rewardPerBlock = rewardPerBlockAsRewardToken.mul(99).div(100);
+                rewardPerBlock = rewardPerBlockAsRewardToken.mul(100-routerLoss).div(100);
             else
                 rewardPerBlock = 0;
         }
