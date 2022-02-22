@@ -874,6 +874,11 @@ interface IUniswapV2Router {
     ) external;
 }
 
+/**
+    - Deploy BBChef
+    - Set swapRoute2 (optional) (require if reward token LP on different DEX)
+    - Set router2 (optional) (require if reward token LP on different DEX)
+ */
 contract BBChefSingle4APE is Ownable {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
