@@ -898,7 +898,6 @@ contract BBChefSingle4BSW is Ownable {
         address hostChef;           // CAKE MasterChef or SmartChef for Strategy
         bool isMaster;              // MasterChef or SmartChef
         uint256 hostPid;            // hostchef pool id
-        address syrup;              // If Chef is MasterChef, need to know syrup token
         address hostRewardToken;   // If Chef is SmartChef, need to know SmartChef reward token
     }
     
@@ -949,7 +948,6 @@ contract BBChefSingle4BSW is Ownable {
         address _hostChef,
         bool _isMaster,
         uint256 _hostPid,
-        address _syrup,
         address _hostRewardToken,
         address _router,
         address[] memory _path,
@@ -972,7 +970,6 @@ contract BBChefSingle4BSW is Ownable {
             hostChef: _hostChef,
             isMaster: _isMaster,
             hostPid: _hostPid,
-            syrup: _syrup,
             hostRewardToken: _hostRewardToken
         }));
 
@@ -981,11 +978,6 @@ contract BBChefSingle4BSW is Ownable {
         
         require(_hostChef != address(0), "_hostChef can't be 0x");
         IBEP20(_stakingToken).safeApprove(address(_hostChef), type(uint256).max);
-        
-        if(_isMaster && _hostPid == 0) {
-            require(_syrup != address(0), "_syrup can't be 0x");
-            IBEP20(_syrup).safeApprove(address(_hostChef), type(uint256).max);    
-        }
 
         require(_hostRewardToken != address(0), "_hostRewardToken can't be 0x");
         IBEP20(_hostRewardToken).safeApprove(address(_router), type(uint256).max);
