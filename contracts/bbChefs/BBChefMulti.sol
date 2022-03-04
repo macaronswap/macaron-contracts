@@ -664,18 +664,6 @@ interface ICakeMasterChef {
     function totalAllocPoint() external view returns (uint256);
 }
 
-interface ISmartChef {
-    function deposit(uint256 _amount) external;
-    
-    function withdraw(uint256 _amount) external;
-    
-    function userInfo(address _user) external view returns (uint256 amount, uint256 rewardDebt);
-
-    function rewardPerBlock() external view returns (uint256);
-
-    function stakedToken() external view returns (address);
-}
-
 interface IUniswapV2Router {
     function factory() external pure returns (address);
 
@@ -895,9 +883,7 @@ contract BBChefMulti is Ownable {
         uint256 rewardPerBlock;  // MCRN tokens created per block.
         uint256 lastRewardBlock;  // Last block number that MCRNs distribution occurs.
         uint256 accMacaronPerShare; // Accumulated MCRNs per share, times 1e12. See below.
-        address hostChef;           // CAKE MasterChef or SmartChef for Strategy
         uint256 hostPid;            // hostchef pool id
-        address hostRewardToken;   // If Chef is SmartChef, need to know SmartChef reward token
         uint256 lpSupply;
     }
     
@@ -906,6 +892,9 @@ contract BBChefMulti is Ownable {
 
     // REWARD TOKEN!
     IBEP20 public rewardToken;
+
+    address public hostRewardToken; // HOST MasterChef Reward Token
+    ICakeMasterChef public hostChef;        // CAKE MasterChef for Strategy
     
     // Info of each pool.
     PoolInfo[] public poolInfo;
@@ -934,20 +923,22 @@ contract BBChefMulti is Ownable {
         address _hostChef,
         address _hostRewardToken,
         address _router,
-        address[] memory _path,
+        address[] memory _swapPath,
         address _treasury
     ) public {
         rewardToken = _rewardToken;
         startBlock = _startBlock;
         router = IUniswapV2Router(_router);
-        swapPath = _path;
+        swapPath = _swapPath;
         treasury = _treasury;
         
         require(_hostChef != address(0), "_hostChef can't be 0x");
         //IBEP20(_stakingToken).safeApprove(address(_hostChef), type(uint256).max);
+        hostChef = ICakeMasterChef(_hostChef);
         
         require(_hostRewardToken != address(0), "_hostRewardToken can't be 0x");
         IBEP20(_hostRewardToken).safeApprove(address(_router), type(uint256).max);
+        hostRewardToken = _hostRewardToken;
     }
     
     /* ========== VIEW METHODS ========== */
@@ -971,10 +962,10 @@ contract BBChefMulti is Ownable {
         return user.amount.mul(accMacaronPerShare).div(1e12).sub(user.rewardDebt);
     }
 
-    function getStakedAmountOnHost() public view returns (uint256) {
-        PoolInfo storage pool = poolInfo[0];
-        (uint256 _stakedAmount, ) = ICakeMasterChef(pool.hostChef).userInfo(pool.hostPid, address(this));
-        return _stakedAmount;
+    function getStakedAmountOnHost(uint256 _pid) public view returns (uint256) {
+        PoolInfo storage pool = poolInfo[_pid];
+        (uint256 stakedAmount, ) = ICakeMasterChef(hostChef).userInfo(pool.hostPid, address(this));
+        return stakedAmount;
     }
 
     /* ========== SETTER METHODS ========== */
@@ -994,10 +985,7 @@ contract BBChefMulti is Ownable {
 
     function setRouter1(IUniswapV2Router _router) external onlyOwner {
         router = _router;
-
-        PoolInfo storage pool = poolInfo[0];
-        require(pool.hostRewardToken != address(0), "_hostRewardToken can't be 0x");
-        IBEP20(pool.hostRewardToken).safeApprove(address(_router), type(uint256).max);
+        IBEP20(hostRewardToken).safeApprove(address(_router), type(uint256).max);
     }
 
     function setRouter2(IUniswapV2Router _router) external onlyOwner {
@@ -1060,35 +1048,21 @@ contract BBChefMulti is Ownable {
     }
 
     function strategy(PoolInfo memory pool) internal {
-        uint256 _stakingTokenBal = IBEP20(pool.lpToken).balanceOf(address(this));
-        uint256 stakedAmountOnHost = getStakedAmountOnHost();
-        uint256 _needToAmount = 0;
+        uint256 stakingTokenBal = IBEP20(pool.lpToken).balanceOf(address(this));
+        uint256 stakedAmountOnHost = getStakedAmountOnHost(pool.hostPid);
+        uint256 needToAmount = 0;
         if(stakedAmountOnHost <= pool.lpSupply) {
             // need to deposit
-            _needToAmount = pool.lpSupply.sub(stakedAmountOnHost);
-            require(_stakingTokenBal >= _needToAmount, "strategyDeposit: not enough token for stake! You should never been here!");
-            strategyDeposit(pool, _needToAmount);
+            needToAmount = pool.lpSupply.sub(stakedAmountOnHost);
+            require(stakingTokenBal >= needToAmount, "strategyDeposit: not enough token for stake! You should never been here!");
+            hostChef.deposit(pool.hostPid, needToAmount);
         } else {
             // need to withdraw
-            _needToAmount = stakedAmountOnHost.sub(pool.lpSupply);
-            strategyWithdraw(pool, _needToAmount);
+            needToAmount = stakedAmountOnHost.sub(pool.lpSupply);
+            hostChef.withdraw(pool.hostPid, needToAmount);
         }
     }
-
-    function strategyDeposit(PoolInfo memory pool, uint256 _needToStakeAmount) internal {
-        ICakeMasterChef(pool.hostChef).deposit(pool.hostPid, _needToStakeAmount);
-    }
     
-    function strategyWithdraw(PoolInfo memory pool, uint256 _amount) internal {
-        (uint256 _stakedAmount, ) = ICakeMasterChef(pool.hostChef).userInfo(pool.hostPid, address(this));
-        require(_amount <= _stakedAmount, "ICakeMasterChef strategyWithdraw: _amount greater than _stakedAmount");
-
-        if(pool.hostPid == 0)
-            ICakeMasterChef(pool.hostChef).leaveStaking(_amount);
-        else
-            ICakeMasterChef(pool.hostChef).withdraw(pool.hostPid, _amount);
-    }
-
     function updateRewardPerBlockByStrategy(uint256 _pid) internal {
         //calculate real reward per block
         PoolInfo storage pool = poolInfo[_pid];
@@ -1097,13 +1071,13 @@ contract BBChefMulti is Ownable {
         uint256 stakedAmountThis = pool.lpSupply;
 
         // get rewardPerBlock on host contract
-        uint256 cakePerBlock = ICakeMasterChef(pool.hostChef).cakePerBlock();
-        (address lpToken,uint256 allocPoint,,) = ICakeMasterChef(pool.hostChef).poolInfo(pool.hostPid);
-        uint256 hostTotalAllocPoint = ICakeMasterChef(pool.hostChef).totalAllocPoint();
+        uint256 cakePerBlock = hostChef.cakePerBlock();
+        (address lpToken,uint256 allocPoint,,) = hostChef.poolInfo(pool.hostPid);
+        uint256 hostTotalAllocPoint = hostChef.totalAllocPoint();
         hostRewardPerBlock = cakePerBlock.mul(allocPoint).div(hostTotalAllocPoint);
         // rewardPerBlock as rewardToken calculation
         // todo: with method
-        stakedAmountOnHost = IBEP20(lpToken).balanceOf(pool.hostChef);
+        stakedAmountOnHost = IBEP20(lpToken).balanceOf(address(hostChef));
         
         if(hostRewardPerBlock > 0 && stakedAmountThis > 0 && stakedAmountOnHost > 0) {
             uint256 rewardPerBlockAsHostRewardToken = hostRewardPerBlock.mul(stakedAmountThis).div(stakedAmountOnHost);
@@ -1127,20 +1101,20 @@ contract BBChefMulti is Ownable {
         updatePool(_pid);
     }
     
-    function _rewardDistribution(address hostRewardToken) internal {
-        uint256 _rewardBalance = IBEP20(hostRewardToken).balanceOf(address(this));
-        if (_rewardBalance > 0 && hostRewardDistPercent > 0) {
-            IBEP20(hostRewardToken).safeTransfer(treasury, _rewardBalance.mul(hostRewardDistPercent).div(100));
+    function _rewardDistribution() internal {
+        uint256 rewardBalance = IBEP20(hostRewardToken).balanceOf(address(this));
+        if (rewardBalance > 0 && hostRewardDistPercent > 0) {
+            IBEP20(hostRewardToken).safeTransfer(treasury, rewardBalance.mul(hostRewardDistPercent).div(100));
         }
     }
 
     function _buyback(uint256 _pid) internal {
         PoolInfo storage pool = poolInfo[_pid];
-        uint256 _stakedAmount = getStakedAmountOnHost();
-        require(_stakedAmount == pool.lpSupply, "Staked amount on host and lpSupply not match!");
+        uint256 stakedAmount = getStakedAmountOnHost(_pid);
+        require(stakedAmount == pool.lpSupply, "Staked amount on host and lpSupply not match!");
 
-        uint256 _rewardBalance = IBEP20(pool.hostRewardToken).balanceOf(address(this));
-        _swapTokens1(pool.hostRewardToken, address(rewardToken), _rewardBalance);
+        uint256 rewardBalance = IBEP20(hostRewardToken).balanceOf(address(this));
+        _swapTokens1(hostRewardToken, address(rewardToken), rewardBalance);
     }
 
     /* ========== EXTERNAL/PUBLIC METHODS ========== */
@@ -1161,7 +1135,7 @@ contract BBChefMulti is Ownable {
         }
         // Deposit or harvest on host
         strategy(pool);
-        _rewardDistribution(pool.hostRewardToken);
+        _rewardDistribution();
         _buyback(_pid);
         if (user.amount > 0 && pending > 0) {
             rewardToken.safeTransfer(address(msg.sender), pending);
@@ -1190,7 +1164,7 @@ contract BBChefMulti is Ownable {
             pool.lpToken.safeTransfer(address(msg.sender), _amount);
         
         // This line after transfer bec. lpToken and hostRewardToken can be same
-        _rewardDistribution(pool.hostRewardToken);
+        _rewardDistribution();
         _buyback(_pid);
 
         if(pending > 0) {
@@ -1219,8 +1193,8 @@ contract BBChefMulti is Ownable {
             rewardToken.safeTransfer(address(msg.sender), _amount);
     }
 
-    function rewardDistribution(address hostRewardToken) external onlyOwner {
-        _rewardDistribution(hostRewardToken);
+    function rewardDistribution() external onlyOwner {
+        _rewardDistribution();
     }
     
     function buyback(uint256 _pid) external onlyOwner {
@@ -1247,22 +1221,14 @@ contract BBChefMulti is Ownable {
 
     function unstakeAll(uint256 _pid) public onlyOwner {
         PoolInfo storage pool = poolInfo[_pid];
-        
-        (uint256 _stakedAmount, ) = ICakeMasterChef(pool.hostChef).userInfo(pool.hostPid, address(this));
-        if(pool.hostPid == 0)
-            ICakeMasterChef(pool.hostChef).leaveStaking(_stakedAmount);
-        else
-            ICakeMasterChef(pool.hostChef).withdraw(pool.hostPid, _stakedAmount);
+        (uint256 _stakedAmount, ) = hostChef.userInfo(pool.hostPid, address(this));
+        hostChef.withdraw(pool.hostPid, _stakedAmount);
     }
 
     function stakeLpSupply(uint256 _pid) public onlyOwner {
         // todo: check the necessity of this
         unstakeAll(_pid);
         PoolInfo storage pool = poolInfo[_pid];
-        
-        if(pool.hostPid == 0)
-            ICakeMasterChef(pool.hostChef).enterStaking(pool.lpSupply);
-        else
-            ICakeMasterChef(pool.hostChef).deposit(pool.hostPid, pool.lpSupply);
+        hostChef.deposit(pool.hostPid, pool.lpSupply);
     }
 }
