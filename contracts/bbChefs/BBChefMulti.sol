@@ -885,6 +885,7 @@ contract BBChefMulti is Ownable {
         uint256 accMacaronPerShare; // Accumulated MCRNs per share, times 1e12. See below.
         uint256 hostPid;            // hostchef pool id
         uint256 lpSupply;
+        uint256 lastUpdateBlock;
     }
     
     // Treasury
@@ -893,7 +894,7 @@ contract BBChefMulti is Ownable {
     // REWARD TOKEN!
     IBEP20 public rewardToken;
 
-    address public hostRewardToken; // HOST MasterChef Reward Token
+    IBEP20 public hostRewardToken; // HOST MasterChef Reward Token
     ICakeMasterChef public hostChef;        // CAKE MasterChef for Strategy
     
     // Info of each pool.
@@ -913,31 +914,31 @@ contract BBChefMulti is Ownable {
     IUniswapV2Router public router2;
     address[] public swapPath2;
 
-    event Deposit(address indexed user, uint256 amount);
-    event Withdraw(address indexed user, uint256 amount);
-    event EmergencyWithdraw(address indexed user, uint256 amount);
+    event Deposit(address indexed user, uint256 pid, uint256 amount);
+    event Withdraw(address indexed user, uint256 pid, uint256 amount);
+    event EmergencyWithdraw(address indexed user, uint256 pid, uint256 amount);
 
     constructor(
         IBEP20 _rewardToken,
         uint256 _startBlock,
-        address _hostChef,
-        address _hostRewardToken,
-        address _router,
+        ICakeMasterChef _hostChef,
+        IBEP20 _hostRewardToken,
+        IUniswapV2Router _router,
         address[] memory _swapPath,
         address _treasury
     ) public {
         rewardToken = _rewardToken;
-        startBlock = _startBlock;
-        router = IUniswapV2Router(_router);
+        startBlock = _startBlock != 0 ? _startBlock : block.number;
+        router = _router;
         swapPath = _swapPath;
         treasury = _treasury;
         
-        require(_hostChef != address(0), "_hostChef can't be 0x");
+        require(address(_hostChef) != address(0), "_hostChef can't be 0x");
         //IBEP20(_stakingToken).safeApprove(address(_hostChef), type(uint256).max);
-        hostChef = ICakeMasterChef(_hostChef);
+        hostChef = _hostChef;
         
-        require(_hostRewardToken != address(0), "_hostRewardToken can't be 0x");
-        IBEP20(_hostRewardToken).safeApprove(address(_router), type(uint256).max);
+        require(address(_hostRewardToken) != address(0), "_hostRewardToken can't be 0x");
+        _hostRewardToken.safeApprove(address(_router), type(uint256).max);
         hostRewardToken = _hostRewardToken;
     }
     
@@ -964,7 +965,7 @@ contract BBChefMulti is Ownable {
 
     function getStakedAmountOnHost(uint256 _pid) public view returns (uint256) {
         PoolInfo storage pool = poolInfo[_pid];
-        (uint256 stakedAmount, ) = ICakeMasterChef(hostChef).userInfo(pool.hostPid, address(this));
+        (uint256 stakedAmount, ) = hostChef.userInfo(pool.hostPid, address(this));
         return stakedAmount;
     }
 
@@ -985,7 +986,7 @@ contract BBChefMulti is Ownable {
 
     function setRouter1(IUniswapV2Router _router) external onlyOwner {
         router = _router;
-        IBEP20(hostRewardToken).safeApprove(address(_router), type(uint256).max);
+        hostRewardToken.safeApprove(address(_router), type(uint256).max);
     }
 
     function setRouter2(IUniswapV2Router _router) external onlyOwner {
@@ -1005,6 +1006,16 @@ contract BBChefMulti is Ownable {
 
     function setTreasury(address _treasury) external onlyOwner {
         treasury = _treasury;
+    }
+
+    function setHostChef(ICakeMasterChef _hostChef) external onlyOwner {
+        require(address(_hostChef) != address(0), "_hostChef can't be 0x");
+        hostChef = _hostChef;
+    }
+
+    function setHostRewardToken(IBEP20 _hostRewardToken) external onlyOwner {
+        require(address(_hostRewardToken) != address(0), "_hostRewardToken can't be 0x");
+        hostRewardToken = _hostRewardToken;
     }
 
     /* ========== INTERNAL METHODS ========== */
@@ -1102,9 +1113,9 @@ contract BBChefMulti is Ownable {
     }
     
     function _rewardDistribution() internal {
-        uint256 rewardBalance = IBEP20(hostRewardToken).balanceOf(address(this));
+        uint256 rewardBalance = hostRewardToken.balanceOf(address(this));
         if (rewardBalance > 0 && hostRewardDistPercent > 0) {
-            IBEP20(hostRewardToken).safeTransfer(treasury, rewardBalance.mul(hostRewardDistPercent).div(100));
+            hostRewardToken.safeTransfer(treasury, rewardBalance.mul(hostRewardDistPercent).div(100));
         }
     }
 
@@ -1113,8 +1124,8 @@ contract BBChefMulti is Ownable {
         uint256 stakedAmount = getStakedAmountOnHost(_pid);
         require(stakedAmount == pool.lpSupply, "Staked amount on host and lpSupply not match!");
 
-        uint256 rewardBalance = IBEP20(hostRewardToken).balanceOf(address(this));
-        _swapTokens1(hostRewardToken, address(rewardToken), rewardBalance);
+        uint256 rewardBalance = hostRewardToken.balanceOf(address(this));
+        _swapTokens1(address(hostRewardToken), address(rewardToken), rewardBalance);
     }
 
     /* ========== EXTERNAL/PUBLIC METHODS ========== */
@@ -1142,7 +1153,7 @@ contract BBChefMulti is Ownable {
         }
         user.rewardDebt = user.amount.mul(pool.accMacaronPerShare).div(1e12);
         updateRewardPerBlockByStrategy(_pid);
-        emit Deposit(msg.sender, _amount);
+        emit Deposit(msg.sender, _pid, _amount);
     }
 
     // Withdraw STAKING tokens from STAKING.
@@ -1172,7 +1183,7 @@ contract BBChefMulti is Ownable {
         }
         user.rewardDebt = user.amount.mul(pool.accMacaronPerShare).div(1e12);
         updateRewardPerBlockByStrategy(_pid);
-        emit Withdraw(msg.sender, _amount);
+        emit Withdraw(msg.sender, _pid, _amount);
     }
 
     // Withdraw without caring about rewards. EMERGENCY ONLY.
@@ -1183,7 +1194,7 @@ contract BBChefMulti is Ownable {
         pool.lpSupply = pool.lpSupply.sub(user.amount);
         user.amount = 0;
         user.rewardDebt = 0;
-        emit EmergencyWithdraw(msg.sender, user.amount);
+        emit EmergencyWithdraw(msg.sender, _pid, user.amount);
     }
 
     // Withdraw reward. EMERGENCY ONLY.
@@ -1191,6 +1202,31 @@ contract BBChefMulti is Ownable {
         uint256 _amount = rewardToken.balanceOf(address(this));
         if(_amount > 0)
             rewardToken.safeTransfer(address(msg.sender), _amount);
+    }
+
+    function addPool(IBEP20 _lpToken, uint256 _hostPid,  bool _withUpdate) external onlyOwner {
+        if (_withUpdate) {
+        }
+
+        uint256 lastRewardBlock = block.number > startBlock ? block.number : startBlock;
+        poolInfo.push(PoolInfo({
+            lpToken: _lpToken,
+            rewardPerBlock: 0,
+            lastRewardBlock: lastRewardBlock,
+            accMacaronPerShare: 0,
+            hostPid: _hostPid,
+            lpSupply: 0,
+            lastUpdateBlock: block.number
+        }));
+
+        _lpToken.safeApprove(address(hostChef), type(uint256).max);
+    }
+
+    function massUpdatePools() public {
+        uint256 length = poolInfo.length;
+        for (uint256 pid = 0; pid < length; ++pid) {
+            updateRewardPerBlockByStrategy(pid);
+        }
     }
 
     function rewardDistribution() external onlyOwner {
