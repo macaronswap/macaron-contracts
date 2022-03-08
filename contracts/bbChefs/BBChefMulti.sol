@@ -1058,7 +1058,8 @@ contract BBChefMulti is Ownable {
         router2.swapExactTokensForTokens(_amount, amountOutMin, path, address(this), now);
     }
 
-    function strategy(PoolInfo memory pool) internal {
+    function _strategy(uint256 _pid) internal {
+        PoolInfo memory pool = poolInfo[_pid];
         uint256 stakingTokenBal = IBEP20(pool.lpToken).balanceOf(address(this));
         uint256 stakedAmountOnHost = getStakedAmountOnHost(pool.hostPid);
         uint256 needToAmount = 0;
@@ -1074,7 +1075,7 @@ contract BBChefMulti is Ownable {
         }
     }
     
-    function updateRewardPerBlockByStrategy(uint256 _pid) internal {
+    function _updateRewardPerBlockByStrategy(uint256 _pid) internal {
         //calculate real reward per block
         PoolInfo storage pool = poolInfo[_pid];
         uint256 hostRewardPerBlock = 0;
@@ -1119,11 +1120,7 @@ contract BBChefMulti is Ownable {
         }
     }
 
-    function _buyback(uint256 _pid) internal {
-        PoolInfo storage pool = poolInfo[_pid];
-        uint256 stakedAmount = getStakedAmountOnHost(_pid);
-        require(stakedAmount == pool.lpSupply, "Staked amount on host and lpSupply not match!");
-
+    function _buyback() internal {
         uint256 rewardBalance = hostRewardToken.balanceOf(address(this));
         _swapTokens1(address(hostRewardToken), address(rewardToken), rewardBalance);
     }
@@ -1145,14 +1142,14 @@ contract BBChefMulti is Ownable {
             pool.lpSupply = pool.lpSupply.add(_amount);
         }
         // Deposit or harvest on host
-        strategy(pool);
+        _strategy(_pid);
         _rewardDistribution();
-        _buyback(_pid);
+        _buyback();
         if (user.amount > 0 && pending > 0) {
             rewardToken.safeTransfer(address(msg.sender), pending);
         }
         user.rewardDebt = user.amount.mul(pool.accMacaronPerShare).div(1e12);
-        updateRewardPerBlockByStrategy(_pid);
+        _updateRewardPerBlockByStrategy(_pid);
         emit Deposit(msg.sender, _pid, _amount);
     }
 
@@ -1169,20 +1166,20 @@ contract BBChefMulti is Ownable {
             pool.lpSupply = pool.lpSupply.sub(_amount);
         }
         // Withdraw on host
-        strategy(pool);
+        _strategy(_pid);
         
         if(_amount > 0)
             pool.lpToken.safeTransfer(address(msg.sender), _amount);
         
         // This line after transfer bec. lpToken and hostRewardToken can be same
         _rewardDistribution();
-        _buyback(_pid);
+        _buyback();
 
         if(pending > 0) {
             rewardToken.safeTransfer(address(msg.sender), pending);
         }
         user.rewardDebt = user.amount.mul(pool.accMacaronPerShare).div(1e12);
-        updateRewardPerBlockByStrategy(_pid);
+        _updateRewardPerBlockByStrategy(_pid);
         emit Withdraw(msg.sender, _pid, _amount);
     }
 
@@ -1204,10 +1201,7 @@ contract BBChefMulti is Ownable {
             rewardToken.safeTransfer(address(msg.sender), _amount);
     }
 
-    function addPool(IBEP20 _lpToken, uint256 _hostPid,  bool _withUpdate) external onlyOwner {
-        if (_withUpdate) {
-        }
-
+    function addPool(IBEP20 _lpToken, uint256 _hostPid) public onlyOwner {
         uint256 lastRewardBlock = block.number > startBlock ? block.number : startBlock;
         poolInfo.push(PoolInfo({
             lpToken: _lpToken,
@@ -1222,10 +1216,24 @@ contract BBChefMulti is Ownable {
         _lpToken.safeApprove(address(hostChef), type(uint256).max);
     }
 
+    function addMultiPool(IBEP20[] memory _lpTokens, uint256[] memory _hostPids) external onlyOwner {
+        require(_lpTokens.length == _hostPids.length, "Array lengths must be equal!");
+        for(uint256 i = 0; i < _lpTokens.length; i++) {
+            addPool(_lpTokens[i], _hostPids[i]);
+        }
+    }
+
+    function updatePool(uint256 _pid, uint256 _hostPid) external onlyOwner {
+        PoolInfo storage pool = poolInfo[_pid];
+        unstakeAll(_pid);
+        pool.hostPid = _hostPid;
+        pool.lastUpdateBlock = block.number;
+    }
+
     function massUpdatePools() public {
         uint256 length = poolInfo.length;
-        for (uint256 pid = 0; pid < length; ++pid) {
-            updateRewardPerBlockByStrategy(pid);
+        for (uint256 pid = 0; pid < length; pid++) {
+            _updateRewardPerBlockByStrategy(pid);
         }
     }
 
@@ -1234,8 +1242,15 @@ contract BBChefMulti is Ownable {
     }
     
     function buyback(uint256 _pid) external onlyOwner {
-        stakeLpSupply(_pid);
-        _buyback(_pid);
+        _strategy(_pid);
+        _buyback();
+    }
+
+    function buybackAll() external onlyOwner {
+        for(uint256 i = 0; i < poolInfo.length; i++) {
+            _strategy(i);
+        }
+        _buyback();
     }
 
     // Update reward variables of the given pool to be up-to-date.
@@ -1259,12 +1274,5 @@ contract BBChefMulti is Ownable {
         PoolInfo storage pool = poolInfo[_pid];
         (uint256 _stakedAmount, ) = hostChef.userInfo(pool.hostPid, address(this));
         hostChef.withdraw(pool.hostPid, _stakedAmount);
-    }
-
-    function stakeLpSupply(uint256 _pid) public onlyOwner {
-        // todo: check the necessity of this
-        unstakeAll(_pid);
-        PoolInfo storage pool = poolInfo[_pid];
-        hostChef.deposit(pool.hostPid, pool.lpSupply);
     }
 }
