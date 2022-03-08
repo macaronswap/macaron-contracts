@@ -938,6 +938,7 @@ contract BBChefMulti is Ownable {
         //IBEP20(_stakingToken).safeApprove(address(_hostChef), type(uint256).max);
         hostChef = _hostChef;
         
+        require(address(_rewardToken) != address(_hostRewardToken), "_rewardToken and _hostRewardToken can't be same!");
         require(address(_hostRewardToken) != address(0), "_hostRewardToken can't be 0x");
         _hostRewardToken.safeApprove(address(_router), type(uint256).max);
         hostRewardToken = _hostRewardToken;
@@ -1205,7 +1206,7 @@ contract BBChefMulti is Ownable {
     function addPool(uint256 _hostPid) public onlyOwner {
         (address _lpToken, uint256 _allocPoint,, ) = hostChef.poolInfo(_hostPid);
         require(_allocPoint > 0, "Host allocPoint can't be zero!");
-
+        require(_lpToken != address(hostRewardToken), "_lpToken and _hostRewardToken can't be same!");
         require(isHostPidSupported[_hostPid] == false, "This pool already added before!");
         isHostPidSupported[_hostPid] = true;
 
@@ -1231,7 +1232,11 @@ contract BBChefMulti is Ownable {
 
     function updatePool(uint256 _pid, uint256 _hostPid) external onlyOwner {
         require(isHostPidSupported[_hostPid] == false, "This pool already added before!");
-        
+
+        (address _lpToken, uint256 _allocPoint,, ) = hostChef.poolInfo(_hostPid);
+        require(_allocPoint > 0, "Host allocPoint can't be zero!");
+        require(_lpToken != address(hostRewardToken), "_lpToken and _hostRewardToken can't be same!");
+
         PoolInfo storage pool = poolInfo[_pid];
         unstakeAll(_pid);
         isHostPidSupported[pool.hostPid] = false;
