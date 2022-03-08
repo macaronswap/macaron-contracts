@@ -896,6 +896,7 @@ contract BBChefMulti is Ownable {
 
     IBEP20 public hostRewardToken; // HOST MasterChef Reward Token
     ICakeMasterChef public hostChef;        // CAKE MasterChef for Strategy
+    mapping(uint256 => bool) public isHostPidSupported;
     
     // Info of each pool.
     PoolInfo[] public poolInfo;
@@ -1201,10 +1202,16 @@ contract BBChefMulti is Ownable {
             rewardToken.safeTransfer(address(msg.sender), _amount);
     }
 
-    function addPool(IBEP20 _lpToken, uint256 _hostPid) public onlyOwner {
+    function addPool(uint256 _hostPid) public onlyOwner {
+        (address _lpToken, uint256 _allocPoint,, ) = hostChef.poolInfo(_hostPid);
+        require(_allocPoint > 0, "Host allocPoint can't be zero!");
+
+        require(isHostPidSupported[_hostPid] == false, "This pool already added before!");
+        isHostPidSupported[_hostPid] = true;
+
         uint256 lastRewardBlock = block.number > startBlock ? block.number : startBlock;
         poolInfo.push(PoolInfo({
-            lpToken: _lpToken,
+            lpToken: IBEP20(_lpToken),
             rewardPerBlock: 0,
             lastRewardBlock: lastRewardBlock,
             accMacaronPerShare: 0,
@@ -1213,20 +1220,23 @@ contract BBChefMulti is Ownable {
             lastUpdateBlock: block.number
         }));
 
-        _lpToken.safeApprove(address(hostChef), type(uint256).max);
+        IBEP20(_lpToken).safeApprove(address(hostChef), type(uint256).max);
     }
 
-    function addMultiPool(IBEP20[] memory _lpTokens, uint256[] memory _hostPids) external onlyOwner {
-        require(_lpTokens.length == _hostPids.length, "Array lengths must be equal!");
-        for(uint256 i = 0; i < _lpTokens.length; i++) {
-            addPool(_lpTokens[i], _hostPids[i]);
+    function addMultiPool(uint256[] memory _hostPids) external onlyOwner {
+        for(uint256 i = 0; i < _hostPids.length; i++) {
+            addPool(_hostPids[i]);
         }
     }
 
     function updatePool(uint256 _pid, uint256 _hostPid) external onlyOwner {
+        require(isHostPidSupported[_hostPid] == false, "This pool already added before!");
+        
         PoolInfo storage pool = poolInfo[_pid];
         unstakeAll(_pid);
+        isHostPidSupported[pool.hostPid] = false;
         pool.hostPid = _hostPid;
+        isHostPidSupported[_hostPid] = true;
         pool.lastUpdateBlock = block.number;
     }
 
