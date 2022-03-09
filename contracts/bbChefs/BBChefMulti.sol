@@ -965,7 +965,7 @@ contract BBChefMulti is Ownable {
         return user.amount.mul(accMacaronPerShare).div(1e12).sub(user.rewardDebt);
     }
 
-    function getStakedAmountOnHost(uint256 _pid) public view returns (uint256) {
+    function getStakedAmountOnHost(uint256 _pid) external view returns (uint256) {
         PoolInfo storage pool = poolInfo[_pid];
         (uint256 stakedAmount, ) = hostChef.userInfo(pool.hostPid, address(this));
         return stakedAmount;
@@ -1062,8 +1062,8 @@ contract BBChefMulti is Ownable {
 
     function _strategy(uint256 _pid) internal {
         PoolInfo memory pool = poolInfo[_pid];
-        uint256 stakingTokenBal = IBEP20(pool.lpToken).balanceOf(address(this));
-        uint256 stakedAmountOnHost = getStakedAmountOnHost(pool.hostPid);
+        uint256 stakingTokenBal = pool.lpToken.balanceOf(address(this));
+        (uint256 stakedAmountOnHost, ) = hostChef.userInfo(pool.hostPid, address(this));
         uint256 needToAmount = 0;
         if(stakedAmountOnHost <= pool.lpSupply) {
             // need to deposit
@@ -1238,6 +1238,8 @@ contract BBChefMulti is Ownable {
         require(_lpToken != address(hostRewardToken), "_lpToken and _hostRewardToken can't be same!");
 
         PoolInfo storage pool = poolInfo[_pid];
+        require(_lpToken == address(pool.lpToken), "_hostPid lpToken does not match!");
+
         unstakeAll(_pid);
         isHostPidSupported[pool.hostPid] = false;
         pool.hostPid = _hostPid;
