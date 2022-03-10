@@ -867,7 +867,7 @@ interface IUniswapV2Router {
     - Set swapRoute2 (optional) (require if reward token LP on different DEX)
     - Set router2 (optional) (require if reward token LP on different DEX)
  */
-contract BBChefMulti is Ownable {
+contract BBChefMulti4PCS is Ownable {
     using SafeMath for uint256;
     using SafeBEP20 for IBEP20;
 
