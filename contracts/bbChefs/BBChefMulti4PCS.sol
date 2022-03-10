@@ -906,8 +906,8 @@ contract BBChefMulti is Ownable {
     uint256 public startBlock;
 
     uint256 public hostRewardDistPercent = 1; // 1%
-
     uint256 public routerLoss = 5; // 5%
+    uint256 public slippageTolerance = 10; // 1:0.1% 10:1% 20:2%
 
     // About BB
     IUniswapV2Router public router;
@@ -1020,6 +1020,11 @@ contract BBChefMulti is Ownable {
         hostRewardToken = _hostRewardToken;
     }
 
+    function setSlippageTolerance(uint256 _slippageTolerance) external onlyOwner {
+        require(_slippageTolerance < 500, "Slippage tolerance can't be greather than 50 percent.");
+        slippageTolerance = _slippageTolerance;
+    }
+
     /* ========== INTERNAL METHODS ========== */
 
     function _swapTokens1(address _input, address _output, uint256 _amount) internal {
@@ -1035,7 +1040,7 @@ contract BBChefMulti is Ownable {
         }
         uint256[] memory amountsOuts = router.getAmountsOut(_amount, path);
         uint256 lastAmountOut = amountsOuts[amountsOuts.length-1];
-        uint256 amountOutMin = lastAmountOut.sub(lastAmountOut.div(100));   // 1% slippage tolerance
+        uint256 amountOutMin = lastAmountOut.sub(lastAmountOut.mul(slippageTolerance).div(1000));   // slippage tolerance
         uint256[] memory amounts = router.swapExactTokensForTokens(_amount, amountOutMin, path, address(this), now);
 
         if(address(router2) != address(0)) {
@@ -1056,7 +1061,7 @@ contract BBChefMulti is Ownable {
         }
         uint256[] memory amountsOuts = router2.getAmountsOut(_amount, path);
         uint256 lastAmountOut = amountsOuts[amountsOuts.length-1];
-        uint256 amountOutMin = lastAmountOut.sub(lastAmountOut.div(100));   // 1% slippage tolerance
+        uint256 amountOutMin = lastAmountOut.sub(lastAmountOut.mul(slippageTolerance).div(1000));   // slippage tolerance
         router2.swapExactTokensForTokens(_amount, amountOutMin, path, address(this), now);
     }
 
