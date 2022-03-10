@@ -951,6 +951,10 @@ contract BBChefMulti4PCS is Ownable {
         return _to.sub(_from);
     }
 
+    function getPoolLength() external view returns (uint256) {
+        return poolInfo.length;
+    }
+
     // View function to see pending Reward on frontend.
     function pendingReward(uint256 _pid, address _user) external view returns (uint256) {
         PoolInfo storage pool = poolInfo[_pid];
