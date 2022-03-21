@@ -1120,8 +1120,6 @@ contract BBChefMulti4PCS is Ownable {
         else {
             pool.rewardPerBlock = 0;
         }
-        
-        updatePool(_pid);
     }
     
     function _rewardDistribution() internal {
@@ -1259,6 +1257,7 @@ contract BBChefMulti4PCS is Ownable {
     function massUpdatePools() public {
         uint256 length = poolInfo.length;
         for (uint256 pid = 0; pid < length; pid++) {
+            updatePool(pid);
             _updateRewardPerBlockByStrategy(pid);
         }
     }
