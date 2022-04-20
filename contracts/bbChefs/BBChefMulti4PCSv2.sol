@@ -902,6 +902,7 @@ contract BBChefMulti4PCSv2 is Ownable {
     IBEP20 public hostRewardToken; // HOST MasterChef Reward Token
     ICakeMasterChefV2 public hostChef;        // CAKE MasterChef for Strategy
     mapping(uint256 => bool) public isHostPidSupported;
+    mapping(uint256 => uint256) public extraRewardPerBlock;
     
     // Info of each pool.
     PoolInfo[] public poolInfo;
@@ -1116,8 +1117,10 @@ contract BBChefMulti4PCSv2 is Ownable {
                 rewardPerBlockAsRewardToken = amountsOuts2[amountsOuts2.length-1];
             }
 
-            if(rewardPerBlockAsRewardToken > 0)
-                pool.rewardPerBlock = rewardPerBlockAsRewardToken.mul(100-routerLoss).div(100);
+            if(rewardPerBlockAsRewardToken > 0) {
+                pool.rewardPerBlock =  rewardPerBlockAsRewardToken.mul(100-routerLoss).div(100);
+                pool.rewardPerBlock = pool.rewardPerBlock.add(extraRewardPerBlock[_pid]);
+            }
             else
                 pool.rewardPerBlock = 0;
         }
