@@ -996,6 +996,27 @@ contract BBSmartChef4PCS is Ownable {
         treasury = _treasury;
     }
 
+    function addHost(ISmartChef _hostChef, IBEP20 _hostRewardToken, bool _activate) external onlyOwner {
+        require(address(stakingToken) == _hostChef.stakedToken(), "_hostChef.stakedToken() must be same _stakingToken");
+        // add host pool alternative
+        hostInfo.push(HostInfo({
+            hostChef: _hostChef,
+            hostRewardToken: _hostRewardToken
+        }));
+
+        if(_activate)
+            switchHost(hostInfo.length - 1);
+    }
+
+    function switchHost(uint256 _hostId) public onlyOwner {
+        // unstake all from old
+        unstakeAll();
+        // switch host
+        activeHostId = _hostId;
+        // stake all to new
+        stakeAll();
+    }
+
     function _swapTokens(address _input, address _output, uint256 _amount) internal {
         if (_input == _output || _amount == 0) return;
         address[] memory path = swapPath;
@@ -1201,8 +1222,12 @@ contract BBSmartChef4PCS is Ownable {
         hostInfo[activeHostId].hostChef.withdraw(_stakedAmount);
     }
 
+    function stakeAll() public onlyOwner {
+        uint256 _amount = stakingToken.balanceOf(address(this));
+        hostInfo[activeHostId].hostChef.deposit(_amount);
+    }
+
     function stakeLpSupply() public onlyOwner {
-        unstakeAll();
         hostInfo[activeHostId].hostChef.deposit(lpSupply);
     }
 
@@ -1211,6 +1236,7 @@ contract BBSmartChef4PCS is Ownable {
     }
 
     function buyback() external onlyOwner {
+        unstakeAll();
         stakeLpSupply();
         _buyback();
     }
