@@ -887,8 +887,12 @@ contract BBSmartChef4PCS is Ownable {
     struct HostInfo {
         ISmartChef hostChef;       // SmartChef for Strategy
         IBEP20 hostRewardToken;   // If Chef is SmartChef, need to know SmartChef reward token
+        IUniswapV2Router router;
+        address[] swapPath;
     }
 
+    address WBNB = 0xbb4CdB9CBd36B01bD1cBaEBF2De08d9173bc095c;
+    
     // Treasury
     address treasury;
 
@@ -918,10 +922,6 @@ contract BBSmartChef4PCS is Ownable {
     uint256 public routerLoss = 1; // 1%
     uint256 public slippageTolerance = 10; // 1:0.1% 10:1% 20:2%
 
-    // About BB
-    IUniswapV2Router public router;
-    address[] public swapPath;
-
     event Deposit(address indexed user, uint256 amount);
     event Withdraw(address indexed user, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 amount);
@@ -941,18 +941,21 @@ contract BBSmartChef4PCS is Ownable {
         rewardToken = _rewardToken;
         rewardPerBlock = _rewardPerBlock;
         startBlock = _startBlock != 0 ? _startBlock : block.number;
-        router = IUniswapV2Router(_router);
-        swapPath = _path;
-
         lastRewardBlock = _startBlock;
         accMacaronPerShare = 0;
 
         require(address(_stakingToken) == _hostChef.stakedToken(), "_hostChef.stakedToken() must be same _stakingToken");
-        // staking pool
+        
+        // host pool
         hostInfo.push(HostInfo({
             hostChef: _hostChef,
-            hostRewardToken: _hostRewardToken
+            hostRewardToken: _hostRewardToken,
+            router: IUniswapV2Router(_router),
+            swapPath: _path
         }));
+        if(_path.length == 0) {
+            hostInfo[0].swapPath = [address(_hostRewardToken), WBNB, address(rewardToken)];
+        }
 
         treasury = _treasury;
         
@@ -1001,7 +1004,7 @@ contract BBSmartChef4PCS is Ownable {
         
         if(hostRewardPerBlock > 0 && thisStakedAmount > 0 && totalStakedAmount > 0) {
             uint256 rewardPerBlockAsHostRewardToken = hostRewardPerBlock.mul(thisStakedAmount).div(totalStakedAmount);
-            uint256[] memory amountsOuts = router.getAmountsOut(rewardPerBlockAsHostRewardToken, swapPath);
+            uint256[] memory amountsOuts = hostInfo[_hostId].router.getAmountsOut(rewardPerBlockAsHostRewardToken, hostInfo[_hostId].swapPath);
             uint256 rewardPerBlockAsRewardToken = amountsOuts[amountsOuts.length-1];
             if(rewardPerBlockAsRewardToken > 0)
                 return rewardPerBlockAsRewardToken.mul(100-routerLoss).div(100);
@@ -1033,16 +1036,16 @@ contract BBSmartChef4PCS is Ownable {
         hostRewardDistPercent = _percent;
     }
 
-    function setPancakeRouter(IUniswapV2Router _router) external onlyOwner {
-        router = _router;
+    function setPancakeRouter(uint256 _hostId, IUniswapV2Router _router) external onlyOwner {
+        hostInfo[_hostId].router = _router;
 
         IBEP20 hostRewardToken = hostInfo[activeHostId].hostRewardToken;
         require(address(hostRewardToken) != address(0), "hostRewardToken can't be 0x");
         IBEP20(hostRewardToken).safeApprove(address(_router), type(uint256).max);
     }
 
-    function setRouterPath(address[] memory _path) external onlyOwner {
-        swapPath = _path;
+    function setRouterPath(uint256 _hostId, address[] memory _path) external onlyOwner {
+        hostInfo[_hostId].swapPath = _path;
     }
 
     function setTreasury(address _treasury) external onlyOwner {
@@ -1052,8 +1055,9 @@ contract BBSmartChef4PCS is Ownable {
     /* ========== INTERNAL METHODS ========== */
 
     function _swapTokens(address _input, address _output, uint256 _amount) internal {
+        HostInfo memory activeHost = hostInfo[activeHostId];
         if (_input == _output || _amount == 0) return;
-        address[] memory path = swapPath;
+        address[] memory path = activeHost.swapPath;
         
         // use direct path if path not setted
         if (path.length == 0) {
@@ -1062,10 +1066,10 @@ contract BBSmartChef4PCS is Ownable {
             path[0] = _input;
             path[1] = _output;
         }
-        uint256[] memory amountsOuts = router.getAmountsOut(_amount, path);
+        uint256[] memory amountsOuts = activeHost.router.getAmountsOut(_amount, path);
         uint256 lastAmountOut = amountsOuts[amountsOuts.length-1];
         uint256 amountOutMin = lastAmountOut.sub(lastAmountOut.mul(slippageTolerance).div(1000));   // slippage tolerance
-        router.swapExactTokensForTokens(_amount, amountOutMin, path, address(this), now);
+        activeHost.router.swapExactTokensForTokens(_amount, amountOutMin, path, address(this), now);
     }
 
     function strategy() internal {
@@ -1189,13 +1193,18 @@ contract BBSmartChef4PCS is Ownable {
             rewardToken.safeTransfer(address(msg.sender), _amount);
     }
 
-    function addHost(ISmartChef _hostChef, IBEP20 _hostRewardToken, bool _activate) external onlyOwner {
+    function addHost(ISmartChef _hostChef, IBEP20 _hostRewardToken, address _router, address[] memory _path, bool _activate) external onlyOwner {
         require(address(stakingToken) == _hostChef.stakedToken(), "_hostChef.stakedToken() must be same _stakingToken");
         // add host pool alternative
         hostInfo.push(HostInfo({
             hostChef: _hostChef,
-            hostRewardToken: _hostRewardToken
+            hostRewardToken: _hostRewardToken,
+            router: IUniswapV2Router(_router),
+            swapPath: _path
         }));
+        if(_path.length == 0) {
+            hostInfo[hostInfo.length-1].swapPath = [address(_hostRewardToken), WBNB, address(rewardToken)];
+        }
 
         if(_activate)
             switchHost(hostInfo.length - 1);
