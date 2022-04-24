@@ -1077,7 +1077,7 @@ contract BBSmartChef4PCS is Ownable {
         activeHost.router.swapExactTokensForTokens(_amount, amountOutMin, path, address(this), now);
     }
 
-    function strategy() internal {
+    function _strategy() internal {
         uint256 _stakingTokenBal = IBEP20(stakingToken).balanceOf(address(this));
         uint256 _stakedAmount = getStakedAmountOnHost();
         uint256 _needToAmount = 0;
@@ -1089,18 +1089,18 @@ contract BBSmartChef4PCS is Ownable {
         } else {
             // need to withdraw
             _needToAmount = _stakedAmount.sub(lpSupply);
-            strategyWithdraw(_needToAmount);
+            _strategyWithdraw(_needToAmount);
         }
     }
     
-    function strategyWithdraw(uint256 _amount) internal {
+    function _strategyWithdraw(uint256 _amount) internal {
         (uint256 _stakedAmount, ) = hostInfo[activeHostId].hostChef.userInfo(address(this));
         require(_amount <= _stakedAmount, "ISmartChef strategyWithdraw: _amount greater than _stakedAmount");
 
         hostInfo[activeHostId].hostChef.withdraw(_amount);
     }
 
-    function updateRewardPerBlockByStrategy() internal {
+    function _updateRewardPerBlockByStrategy() internal {
         rewardPerBlock = calculatedRewardPerBlockForHost(activeHostId, lpSupply);
         rewardPerBlock = rewardPerBlock.add(extraRewardPerBlock);
         updatePool();
@@ -1142,14 +1142,14 @@ contract BBSmartChef4PCS is Ownable {
             lpSupply = lpSupply.add(_amount);
         }
         // Deposit or harvest on host
-        strategy();
+        _strategy();
         _rewardDistribution();
         _buyback();
         if (user.amount > 0 && pending > 0) {
             rewardToken.safeTransfer(address(msg.sender), pending);
         }
         user.rewardDebt = user.amount.mul(accMacaronPerShare).div(1e12);
-        updateRewardPerBlockByStrategy();
+        _updateRewardPerBlockByStrategy();
         emit Deposit(msg.sender, _amount);
     }
 
@@ -1165,7 +1165,7 @@ contract BBSmartChef4PCS is Ownable {
             lpSupply = lpSupply.sub(_amount);
         }
         // Withdraw on host
-        strategy();
+        _strategy();
         
         if(_amount > 0)
             stakingToken.safeTransfer(address(msg.sender), _amount);
@@ -1178,7 +1178,7 @@ contract BBSmartChef4PCS is Ownable {
             rewardToken.safeTransfer(address(msg.sender), pending);
         }
         user.rewardDebt = user.amount.mul(accMacaronPerShare).div(1e12);
-        updateRewardPerBlockByStrategy();
+        _updateRewardPerBlockByStrategy();
         emit Withdraw(msg.sender, _amount);
     }
 
@@ -1223,15 +1223,15 @@ contract BBSmartChef4PCS is Ownable {
     }
 
     function switchHost(uint256 _hostId) public onlyOwner {
-        // unstake all from old
-        unstakeAll();
-        // stake Lp supply and buyback
-        stakeLpSupply();
+        // buy back for old host
+        _strategy();
         _rewardDistribution();
         _buyback();
-        // switch host
+        // switch host and deposit to new
+        unstakeAll();
         activeHostId = _hostId;
-        updateRewardPerBlockByStrategy();
+        stakeLpSupply();
+        _updateRewardPerBlockByStrategy();
     }
 
     function switchToBestHost() external onlyOwner {
@@ -1265,6 +1265,11 @@ contract BBSmartChef4PCS is Ownable {
         uint256 macaronReward = multiplier.mul(rewardPerBlock);
         accMacaronPerShare = accMacaronPerShare.add(macaronReward.mul(1e12).div(lpSupply));
         lastRewardBlock = block.number;
+    }
+
+    function unstakeAll(uint256 _hostId) external onlyOwner {
+        (uint256 _stakedAmount, ) = hostInfo[_hostId].hostChef.userInfo(address(this));
+        hostInfo[_hostId].hostChef.withdraw(_stakedAmount);
     }
 
     function unstakeAll() public onlyOwner {
