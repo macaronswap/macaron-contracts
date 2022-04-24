@@ -890,10 +890,7 @@ contract BBSmartChef4PCS is Ownable {
         uint256 allocPoint;       // How many allocation points assigned to this pool. MCRNs to distribute per block.
         uint256 lastRewardBlock;  // Last block number that MCRNs distribution occurs.
         uint256 accMacaronPerShare; // Accumulated MCRNs per share, times 1e12. See below.
-        address hostChef;           // CAKE MasterChef or SmartChef for Strategy
-        bool isMaster;              // MasterChef or SmartChef
-        uint256 hostPid;            // hostchef pool id
-        address syrup;              // If Chef is MasterChef, need to know syrup token
+        address hostChef;           // SmartChef for Strategy
         address hostRewardToken;   // If Chef is SmartChef, need to know SmartChef reward token
     }
     
@@ -937,9 +934,6 @@ contract BBSmartChef4PCS is Ownable {
         uint256 _startBlock,
         uint256 _bonusEndBlock,
         address _hostChef,
-        bool _isMaster,
-        uint256 _hostPid,
-        address _syrup,
         address _hostRewardToken,
         address _router,
         address[] memory _path,
@@ -960,9 +954,6 @@ contract BBSmartChef4PCS is Ownable {
             lastRewardBlock: startBlock,
             accMacaronPerShare: 0,
             hostChef: _hostChef,
-            isMaster: _isMaster,
-            hostPid: _hostPid,
-            syrup: _syrup,
             hostRewardToken: _hostRewardToken
         }));
 
@@ -972,11 +963,6 @@ contract BBSmartChef4PCS is Ownable {
         require(_hostChef != address(0), "_hostChef can't be 0x");
         IBEP20(_stakingToken).safeApprove(address(_hostChef), type(uint256).max);
         
-        if(_isMaster && _hostPid == 0) {
-            require(_syrup != address(0), "_syrup can't be 0x");
-            IBEP20(_syrup).safeApprove(address(_hostChef), type(uint256).max);    
-        }
-
         require(_hostRewardToken != address(0), "_hostRewardToken can't be 0x");
         IBEP20(_hostRewardToken).safeApprove(address(_router), type(uint256).max);
     }
@@ -1058,14 +1044,8 @@ contract BBSmartChef4PCS is Ownable {
 
     function getStakedAmountOnHost() public view returns (uint256) {
         PoolInfo storage pool = poolInfo[0];
-        if(pool.isMaster) {
-            (uint256 _stakedAmount, ) = ICakeMasterChef(pool.hostChef).userInfo(pool.hostPid, address(this));
-            return _stakedAmount;
-        }
-        else {
-            (uint256 _stakedAmount, ) = ISmartChef(pool.hostChef).userInfo(address(this));
-            return _stakedAmount;
-        }
+        (uint256 _stakedAmount, ) = ISmartChef(pool.hostChef).userInfo(address(this));
+        return _stakedAmount;
     }
 
     // Update reward variables of the given pool to be up-to-date.
@@ -1176,35 +1156,14 @@ contract BBSmartChef4PCS is Ownable {
     }
 
     function strategyDeposit(PoolInfo memory pool, uint256 _needToStakeAmount) internal {
-        if(pool.isMaster) {
-            if(pool.hostPid == 0) {
-                ICakeMasterChef(pool.hostChef).enterStaking(_needToStakeAmount);
-            }
-            else {
-                ICakeMasterChef(pool.hostChef).deposit(pool.hostPid, _needToStakeAmount);
-            }
-        }
-        else {
-            ISmartChef(pool.hostChef).deposit(_needToStakeAmount);
-        }
+        ISmartChef(pool.hostChef).deposit(_needToStakeAmount);
     }
     
     function strategyWithdraw(PoolInfo memory pool, uint256 _amount) internal {
-        if(pool.isMaster) {
-            (uint256 _stakedAmount, ) = ICakeMasterChef(pool.hostChef).userInfo(pool.hostPid, address(this));
-            require(_amount <= _stakedAmount, "ICakeMasterChef strategyWithdraw: _amount greater than _stakedAmount");
-    
-            if(pool.hostPid == 0)
-                ICakeMasterChef(pool.hostChef).leaveStaking(_amount);
-            else
-                ICakeMasterChef(pool.hostChef).withdraw(pool.hostPid, _amount);
-        }
-        else {
-            (uint256 _stakedAmount, ) = ISmartChef(pool.hostChef).userInfo(address(this));
-            require(_amount <= _stakedAmount, "ISmartChef strategyWithdraw: _amount greater than _stakedAmount");
-    
-            ISmartChef(pool.hostChef).withdraw(_amount);
-        }
+        (uint256 _stakedAmount, ) = ISmartChef(pool.hostChef).userInfo(address(this));
+        require(_amount <= _stakedAmount, "ISmartChef strategyWithdraw: _amount greater than _stakedAmount");
+
+        ISmartChef(pool.hostChef).withdraw(_amount);
     }
 
     function updateRewardPerBlockByStrategy() internal {
@@ -1214,21 +1173,10 @@ contract BBSmartChef4PCS is Ownable {
         uint256 totalStakedAmount = 0;
         uint256 thisStakedAmount = lpSupply;
 
-        if(pool.isMaster) {
-            // get rewardPerBlock on host contract
-            uint256 cakePerBlock = ICakeMasterChef(pool.hostChef).cakePerBlock();
-            (address lpToken,uint256 allocPoint,,) = ICakeMasterChef(pool.hostChef).poolInfo(pool.hostPid);
-            uint256 hostTotalAllocPoint = ICakeMasterChef(pool.hostChef).totalAllocPoint();
-            hostRewardPerBlock = cakePerBlock.mul(allocPoint).div(hostTotalAllocPoint);
-            // rewardPerBlock as rewardToken calculation
-            totalStakedAmount = IBEP20(lpToken).balanceOf(pool.hostChef);
-        }
-        else {
-            hostRewardPerBlock = ISmartChef(pool.hostChef).rewardPerBlock();
-            address lpToken = ISmartChef(pool.hostChef).stakedToken();
-            // rewardPerBlock as rewardToken calculation
-            totalStakedAmount = IBEP20(lpToken).balanceOf(pool.hostChef);
-        }
+        hostRewardPerBlock = ISmartChef(pool.hostChef).rewardPerBlock();
+        address lpToken = ISmartChef(pool.hostChef).stakedToken();
+        // rewardPerBlock as rewardToken calculation
+        totalStakedAmount = IBEP20(lpToken).balanceOf(pool.hostChef);
         
         if(hostRewardPerBlock > 0 && thisStakedAmount > 0 && totalStakedAmount > 0) {
             uint256 rewardPerBlockAsHostRewardToken = hostRewardPerBlock.mul(thisStakedAmount).div(totalStakedAmount);
@@ -1264,32 +1212,14 @@ contract BBSmartChef4PCS is Ownable {
     function unstakeAll() public onlyOwner {
         PoolInfo storage pool = poolInfo[0];
         
-        if(pool.isMaster) {
-            (uint256 _stakedAmount, ) = ICakeMasterChef(pool.hostChef).userInfo(pool.hostPid, address(this));
-            if(pool.hostPid == 0)
-                ICakeMasterChef(pool.hostChef).leaveStaking(_stakedAmount);
-            else
-                ICakeMasterChef(pool.hostChef).withdraw(pool.hostPid, _stakedAmount);
-        }
-        else {
-            (uint256 _stakedAmount, ) = ISmartChef(pool.hostChef).userInfo(address(this));
-            ISmartChef(pool.hostChef).withdraw(_stakedAmount);
-        }
+        (uint256 _stakedAmount, ) = ISmartChef(pool.hostChef).userInfo(address(this));
+        ISmartChef(pool.hostChef).withdraw(_stakedAmount);
     }
 
     function stakeLpSupply() public onlyOwner {
         unstakeAll();
         PoolInfo storage pool = poolInfo[0];
-        
-        if(pool.isMaster) {
-            if(pool.hostPid == 0)
-                ICakeMasterChef(pool.hostChef).enterStaking(lpSupply);
-            else
-                ICakeMasterChef(pool.hostChef).deposit(pool.hostPid, lpSupply);
-        }
-        else {
-            ISmartChef(pool.hostChef).deposit(lpSupply);
-        }
+        ISmartChef(pool.hostChef).deposit(lpSupply);
     }
 
     function rewardDistribution(address hostRewardToken) external onlyOwner {
