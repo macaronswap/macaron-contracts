@@ -1044,7 +1044,7 @@ contract BBSmartChef4PCS is Ownable {
     function setPancakeRouter(uint256 _hostId, IUniswapV2Router _router) external onlyOwner {
         hostInfo[_hostId].router = _router;
 
-        IBEP20 hostRewardToken = hostInfo[activeHostId].hostRewardToken;
+        IBEP20 hostRewardToken = hostInfo[_hostId].hostRewardToken;
         require(address(hostRewardToken) != address(0), "hostRewardToken can't be 0x");
         IBEP20(hostRewardToken).safeApprove(address(_router), type(uint256).max);
     }
