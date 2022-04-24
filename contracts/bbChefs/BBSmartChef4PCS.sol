@@ -1164,7 +1164,7 @@ contract BBSmartChef4PCS is Ownable {
         if(_amount > 0)
             stakingToken.safeTransfer(address(msg.sender), _amount);
         
-        // This line after transfer bec. lpToken and hostRewardToken can be same
+        // This line after transfer bec. stakingToken and hostRewardToken can be same
         _rewardDistribution();
         _buyback();
 
@@ -1219,10 +1219,13 @@ contract BBSmartChef4PCS is Ownable {
     function switchHost(uint256 _hostId) public onlyOwner {
         // unstake all from old
         unstakeAll();
+        // stake Lp supply and buyback
+        stakeLpSupply();
+        _rewardDistribution();
+        _buyback();
         // switch host
         activeHostId = _hostId;
-        // stake all to new
-        stakeAll();
+        updateRewardPerBlockByStrategy();
     }
 
     function switchToBestHost() external onlyOwner {
