@@ -919,7 +919,7 @@ contract BBSmartChef4PCS is Ownable {
     uint256 public lpSupply = 0;
 
     uint256 public hostRewardDistPercent = 1; // 1%
-    uint256 public routerLoss = 1; // 1%
+    uint256 public routerLoss = 5; // 5%
     uint256 public slippageTolerance = 10; // 1:0.1% 10:1% 20:2%
 
     event Deposit(address indexed user, uint256 amount);
@@ -1205,6 +1205,12 @@ contract BBSmartChef4PCS is Ownable {
         if(_path.length == 0) {
             hostInfo[hostInfo.length-1].swapPath = [address(_hostRewardToken), WBNB, address(rewardToken)];
         }
+
+        require(address(_hostChef) != address(0), "_hostChef can't be 0x");
+        stakingToken.safeApprove(address(_hostChef), type(uint256).max);
+        
+        require(address(_hostRewardToken) != address(0), "_hostRewardToken can't be 0x");
+        _hostRewardToken.safeApprove(address(_router), type(uint256).max);
 
         if(_activate)
             switchHost(hostInfo.length - 1);
