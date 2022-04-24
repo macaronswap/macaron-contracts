@@ -1201,9 +1201,12 @@ contract BBSmartChef4PCS is Ownable {
     }
     
     function _rewardDistribution() internal {
+        if(hostRewardDistPercent == 0)
+            return;
+        
         IBEP20 _hostRewardToken = hostInfo[activeHostId].hostRewardToken;
         uint256 _rewardBalance = _hostRewardToken.balanceOf(address(this));
-        if (_rewardBalance > 0 && hostRewardDistPercent > 0) {
+        if (_rewardBalance > 0) {
             _hostRewardToken.safeTransfer(treasury, _rewardBalance.mul(hostRewardDistPercent).div(100));
         }
     }
