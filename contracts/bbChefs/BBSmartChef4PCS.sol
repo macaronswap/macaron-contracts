@@ -883,17 +883,12 @@ contract BBSmartChef4PCS is Ownable {
         uint256 amount;     // How many LP tokens the user has provided.
         uint256 rewardDebt; // Reward debt. See explanation below.
     }
-
-    // Info of each pool.
-    struct PoolInfo {
-        IBEP20 lpToken;           // Address of LP token contract.
-        uint256 allocPoint;       // How many allocation points assigned to this pool. MCRNs to distribute per block.
-        uint256 lastRewardBlock;  // Last block number that MCRNs distribution occurs.
-        uint256 accMacaronPerShare; // Accumulated MCRNs per share, times 1e12. See below.
-        address hostChef;           // SmartChef for Strategy
-        address hostRewardToken;   // If Chef is SmartChef, need to know SmartChef reward token
-    }
     
+    struct HostInfo {
+        ISmartChef hostChef;       // SmartChef for Strategy
+        IBEP20 hostRewardToken;   // If Chef is SmartChef, need to know SmartChef reward token
+    }
+
     // Treasury
     address treasury;
 
@@ -903,13 +898,15 @@ contract BBSmartChef4PCS is Ownable {
 
     // MCRN tokens created per block.
     uint256 public rewardPerBlock;
-    
-    // Info of each pool.
-    PoolInfo[] public poolInfo;
+
+    uint256 lastRewardBlock;  // Last block number that MCRNs distribution occurs.
+    uint256 accMacaronPerShare; // Accumulated MCRNs per share, times 1e12. See below.
+
+    // Info of each host contract
+    HostInfo[] public hostInfo;
+    uint256 public activeHostId = 0;
     // Info of each user that stakes LP tokens.
     mapping (address => UserInfo) public userInfo;
-    // Total allocation points. Must be the sum of all allocation points in all pools.
-    uint256 private totalAllocPoint = 0;
     // The block number when MCRN mining starts.
     uint256 public startBlock;
     // The block number when MCRN mining ends.
@@ -933,8 +930,8 @@ contract BBSmartChef4PCS is Ownable {
         uint256 _rewardPerBlock,
         uint256 _startBlock,
         uint256 _bonusEndBlock,
-        address _hostChef,
-        address _hostRewardToken,
+        ISmartChef _hostChef,
+        IBEP20 _hostRewardToken,
         address _router,
         address[] memory _path,
         address _treasury
@@ -947,24 +944,23 @@ contract BBSmartChef4PCS is Ownable {
         router = IUniswapV2Router(_router);
         swapPath = _path;
 
+        lastRewardBlock = _startBlock;
+        accMacaronPerShare = 0;
+
+        require(address(_stakingToken) == _hostChef.stakedToken(), "_hostChef.stakedToken() must be same _stakingToken");
         // staking pool
-        poolInfo.push(PoolInfo({
-            lpToken: _stakingToken,
-            allocPoint: 1000,
-            lastRewardBlock: startBlock,
-            accMacaronPerShare: 0,
+        hostInfo.push(HostInfo({
             hostChef: _hostChef,
             hostRewardToken: _hostRewardToken
         }));
 
-        totalAllocPoint = 1000;
         treasury = _treasury;
         
-        require(_hostChef != address(0), "_hostChef can't be 0x");
-        IBEP20(_stakingToken).safeApprove(address(_hostChef), type(uint256).max);
+        require(address(_hostChef) != address(0), "_hostChef can't be 0x");
+        _stakingToken.safeApprove(address(_hostChef), type(uint256).max);
         
-        require(_hostRewardToken != address(0), "_hostRewardToken can't be 0x");
-        IBEP20(_hostRewardToken).safeApprove(address(_router), type(uint256).max);
+        require(address(_hostRewardToken) != address(0), "_hostRewardToken can't be 0x");
+        _hostRewardToken.safeApprove(address(_router), type(uint256).max);
     }
 
     function stopReward() external onlyOwner {
@@ -977,7 +973,7 @@ contract BBSmartChef4PCS is Ownable {
     
     function setRewardPerBlock(uint256 _rewardPerBlock) external onlyOwner {
         rewardPerBlock = _rewardPerBlock;
-        updatePool(0);
+        updatePool();
     }
 
     function setHostRewardDistPercent(uint256 _percent) external onlyOwner {
@@ -987,9 +983,9 @@ contract BBSmartChef4PCS is Ownable {
     function setPancakeRouter(IUniswapV2Router _router) external onlyOwner {
         router = _router;
 
-        PoolInfo storage pool = poolInfo[0];
-        require(pool.hostRewardToken != address(0), "_hostRewardToken can't be 0x");
-        IBEP20(pool.hostRewardToken).safeApprove(address(_router), type(uint256).max);
+        IBEP20 hostRewardToken = hostInfo[activeHostId].hostRewardToken;
+        require(address(hostRewardToken) != address(0), "hostRewardToken can't be 0x");
+        IBEP20(hostRewardToken).safeApprove(address(_router), type(uint256).max);
     }
 
     function setRouterPath(address[] memory _path) external onlyOwner {
@@ -1030,105 +1026,98 @@ contract BBSmartChef4PCS is Ownable {
 
     // View function to see pending Reward on frontend.
     function pendingReward(address _user) external view returns (uint256) {
-        PoolInfo storage pool = poolInfo[0];
         UserInfo storage user = userInfo[_user];
-        uint256 accMacaronPerShare = pool.accMacaronPerShare;
-        
-        if (block.number > pool.lastRewardBlock && lpSupply != 0) {
-            uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
-            uint256 macaronReward = multiplier.mul(rewardPerBlock).mul(pool.allocPoint).div(totalAllocPoint);
-            accMacaronPerShare = accMacaronPerShare.add(macaronReward.mul(1e12).div(lpSupply));
+        uint256 _accMacaronPerShare = 0;
+        if (block.number > lastRewardBlock && lpSupply != 0) {
+            uint256 multiplier = getMultiplier(lastRewardBlock, block.number);
+            uint256 macaronReward = multiplier.mul(rewardPerBlock);
+            _accMacaronPerShare = accMacaronPerShare.add(macaronReward.mul(1e12).div(lpSupply));
         }
-        return user.amount.mul(accMacaronPerShare).div(1e12).sub(user.rewardDebt);
+        return user.amount.mul(_accMacaronPerShare).div(1e12).sub(user.rewardDebt);
     }
 
     function getStakedAmountOnHost() public view returns (uint256) {
-        PoolInfo storage pool = poolInfo[0];
-        (uint256 _stakedAmount, ) = ISmartChef(pool.hostChef).userInfo(address(this));
+        (uint256 _stakedAmount, ) = hostInfo[activeHostId].hostChef.userInfo(address(this));
         return _stakedAmount;
     }
 
     // Update reward variables of the given pool to be up-to-date.
-    function updatePool(uint256 _pid) public {
-        PoolInfo storage pool = poolInfo[_pid];
-        if (block.number <= pool.lastRewardBlock) {
+    function updatePool() public {
+        if (block.number <= lastRewardBlock) {
             return;
         }
         
         if (lpSupply == 0) {
-            pool.lastRewardBlock = block.number;
+            lastRewardBlock = block.number;
             return;
         }
-        uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
-        uint256 macaronReward = multiplier.mul(rewardPerBlock).mul(pool.allocPoint).div(totalAllocPoint);
-        pool.accMacaronPerShare = pool.accMacaronPerShare.add(macaronReward.mul(1e12).div(lpSupply));
-        pool.lastRewardBlock = block.number;
+        uint256 multiplier = getMultiplier(lastRewardBlock, block.number);
+        uint256 macaronReward = multiplier.mul(rewardPerBlock);
+        accMacaronPerShare = accMacaronPerShare.add(macaronReward.mul(1e12).div(lpSupply));
+        lastRewardBlock = block.number;
     }
 
     // Stake STAKING tokens to ChocoChef
     function deposit(uint256 _amount) external {
-        PoolInfo storage pool = poolInfo[0];
         UserInfo storage user = userInfo[msg.sender];
-        updatePool(0);
+        updatePool();
         uint256 pending = 0;
         if (user.amount > 0) {
-            pending = user.amount.mul(pool.accMacaronPerShare).div(1e12).sub(user.rewardDebt);
+            pending = user.amount.mul(accMacaronPerShare).div(1e12).sub(user.rewardDebt);
         }
         if(_amount > 0) {
-            pool.lpToken.safeTransferFrom(address(msg.sender), address(this), _amount);
+            stakingToken.safeTransferFrom(address(msg.sender), address(this), _amount);
             user.amount = user.amount.add(_amount);
             lpSupply = lpSupply.add(_amount);
         }
         // Deposit or harvest on host
-        strategy(pool);
-        _rewardDistribution(pool.hostRewardToken);
-        _buyback(pool.hostRewardToken);
+        strategy();
+        _rewardDistribution();
+        _buyback();
         if (user.amount > 0 && pending > 0) {
             rewardToken.safeTransfer(address(msg.sender), pending);
         }
-        user.rewardDebt = user.amount.mul(pool.accMacaronPerShare).div(1e12);
+        user.rewardDebt = user.amount.mul(accMacaronPerShare).div(1e12);
         updateRewardPerBlockByStrategy();
         emit Deposit(msg.sender, _amount);
     }
 
     // Withdraw STAKING tokens from STAKING.
     function withdraw(uint256 _amount) external {
-        PoolInfo storage pool = poolInfo[0];
         UserInfo storage user = userInfo[msg.sender];
         require(user.amount >= _amount, "withdraw: not good");
-        updatePool(0);
-        uint256 pending = user.amount.mul(pool.accMacaronPerShare).div(1e12).sub(user.rewardDebt);
+        updatePool();
+        uint256 pending = user.amount.mul(accMacaronPerShare).div(1e12).sub(user.rewardDebt);
         
         if(_amount > 0) {
             user.amount = user.amount.sub(_amount);
             lpSupply = lpSupply.sub(_amount);
         }
         // Withdraw on host
-        strategy(pool);
+        strategy();
         
         if(_amount > 0)
-            pool.lpToken.safeTransfer(address(msg.sender), _amount);
+            stakingToken.safeTransfer(address(msg.sender), _amount);
         
         // This line after transfer bec. lpToken and hostRewardToken can be same
-        _rewardDistribution(pool.hostRewardToken);
-        _buyback(pool.hostRewardToken);
+        _rewardDistribution();
+        _buyback();
 
         if(pending > 0) {
             rewardToken.safeTransfer(address(msg.sender), pending);
         }
-        user.rewardDebt = user.amount.mul(pool.accMacaronPerShare).div(1e12);
+        user.rewardDebt = user.amount.mul(accMacaronPerShare).div(1e12);
         updateRewardPerBlockByStrategy();
         emit Withdraw(msg.sender, _amount);
     }
 
     // Withdraw without caring about rewards. EMERGENCY ONLY.
     function emergencyWithdraw() external {
-        PoolInfo storage pool = poolInfo[0];
         UserInfo storage user = userInfo[msg.sender];
-        pool.lpToken.safeTransfer(address(msg.sender), user.amount);
         lpSupply = lpSupply.sub(user.amount);
         user.amount = 0;
         user.rewardDebt = 0;
+        stakingToken.safeTransfer(address(msg.sender), user.amount);
         emit EmergencyWithdraw(msg.sender, user.amount);
     }
 
@@ -1139,7 +1128,7 @@ contract BBSmartChef4PCS is Ownable {
             rewardToken.safeTransfer(address(msg.sender), _amount);
     }
 
-    function strategy(PoolInfo memory pool) internal {
+    function strategy() internal {
         uint256 _stakingTokenBal = IBEP20(stakingToken).balanceOf(address(this));
         uint256 _stakedAmount = getStakedAmountOnHost();
         uint256 _needToAmount = 0;
@@ -1147,36 +1136,32 @@ contract BBSmartChef4PCS is Ownable {
             // need to deposit
             _needToAmount = lpSupply.sub(_stakedAmount);
             require(_stakingTokenBal >= _needToAmount, "strategyDeposit: not enough token for stake! You should never been here!");
-            strategyDeposit(pool, _needToAmount);
+            hostInfo[activeHostId].hostChef.deposit(_needToAmount);
         } else {
             // need to withdraw
             _needToAmount = _stakedAmount.sub(lpSupply);
-            strategyWithdraw(pool, _needToAmount);
+            strategyWithdraw(_needToAmount);
         }
     }
-
-    function strategyDeposit(PoolInfo memory pool, uint256 _needToStakeAmount) internal {
-        ISmartChef(pool.hostChef).deposit(_needToStakeAmount);
-    }
     
-    function strategyWithdraw(PoolInfo memory pool, uint256 _amount) internal {
-        (uint256 _stakedAmount, ) = ISmartChef(pool.hostChef).userInfo(address(this));
+    function strategyWithdraw(uint256 _amount) internal {
+        (uint256 _stakedAmount, ) = hostInfo[activeHostId].hostChef.userInfo(address(this));
         require(_amount <= _stakedAmount, "ISmartChef strategyWithdraw: _amount greater than _stakedAmount");
 
-        ISmartChef(pool.hostChef).withdraw(_amount);
+        hostInfo[activeHostId].hostChef.withdraw(_amount);
     }
 
     function updateRewardPerBlockByStrategy() internal {
         //calculate real reward per block
-        PoolInfo storage pool = poolInfo[0];
         uint256 hostRewardPerBlock = 0;
         uint256 totalStakedAmount = 0;
         uint256 thisStakedAmount = lpSupply;
 
-        hostRewardPerBlock = ISmartChef(pool.hostChef).rewardPerBlock();
-        address lpToken = ISmartChef(pool.hostChef).stakedToken();
+        ISmartChef hostChef = hostInfo[activeHostId].hostChef;
+
+        hostRewardPerBlock = hostChef.rewardPerBlock();
         // rewardPerBlock as rewardToken calculation
-        totalStakedAmount = IBEP20(lpToken).balanceOf(pool.hostChef);
+        totalStakedAmount = stakingToken.balanceOf(address(hostChef));
         
         if(hostRewardPerBlock > 0 && thisStakedAmount > 0 && totalStakedAmount > 0) {
             uint256 rewardPerBlockAsHostRewardToken = hostRewardPerBlock.mul(thisStakedAmount).div(totalStakedAmount);
@@ -1191,43 +1176,42 @@ contract BBSmartChef4PCS is Ownable {
             rewardPerBlock = 0;
         }
         
-        updatePool(0);
+        updatePool();
     }
     
-    function _rewardDistribution(address hostRewardToken) internal {
-        uint256 _rewardBalance = IBEP20(hostRewardToken).balanceOf(address(this));
+    function _rewardDistribution() internal {
+        IBEP20 _hostRewardToken = hostInfo[activeHostId].hostRewardToken;
+        uint256 _rewardBalance = _hostRewardToken.balanceOf(address(this));
         if (_rewardBalance > 0 && hostRewardDistPercent > 0) {
-            IBEP20(hostRewardToken).safeTransfer(treasury, _rewardBalance.mul(hostRewardDistPercent).div(100));
+            _hostRewardToken.safeTransfer(treasury, _rewardBalance.mul(hostRewardDistPercent).div(100));
         }
     }
 
-    function _buyback(address hostRewardToken) internal {
+    function _buyback() internal {
         uint256 _stakedAmount = getStakedAmountOnHost();
         require(_stakedAmount == lpSupply, "Staked amount on host and lpSupply not match!");
 
-        uint256 _rewardBalance = IBEP20(hostRewardToken).balanceOf(address(this));
-        _swapTokens(hostRewardToken, address(rewardToken), _rewardBalance);
+        IBEP20 hostRewardToken = hostInfo[activeHostId].hostRewardToken;
+        uint256 _rewardBalance = hostRewardToken.balanceOf(address(this));
+        _swapTokens(address(hostRewardToken), address(rewardToken), _rewardBalance);
     }
     
     function unstakeAll() public onlyOwner {
-        PoolInfo storage pool = poolInfo[0];
-        
-        (uint256 _stakedAmount, ) = ISmartChef(pool.hostChef).userInfo(address(this));
-        ISmartChef(pool.hostChef).withdraw(_stakedAmount);
+        (uint256 _stakedAmount, ) = hostInfo[activeHostId].hostChef.userInfo(address(this));
+        hostInfo[activeHostId].hostChef.withdraw(_stakedAmount);
     }
 
     function stakeLpSupply() public onlyOwner {
         unstakeAll();
-        PoolInfo storage pool = poolInfo[0];
-        ISmartChef(pool.hostChef).deposit(lpSupply);
+        hostInfo[activeHostId].hostChef.deposit(lpSupply);
     }
 
-    function rewardDistribution(address hostRewardToken) external onlyOwner {
-        _rewardDistribution(hostRewardToken);
+    function rewardDistribution() external onlyOwner {
+        _rewardDistribution();
     }
 
     function buyback() external onlyOwner {
         stakeLpSupply();
-        _buyback(poolInfo[0].hostRewardToken);
+        _buyback();
     }
 }
