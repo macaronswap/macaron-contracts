@@ -910,7 +910,7 @@ contract BBSmartChef4PCS is Ownable {
     // The block number when MCRN mining starts.
     uint256 public startBlock;
     // The block number when MCRN mining ends.
-    uint256 public bonusEndBlock;
+    uint256 public bonusEndBlock = uint256(-1);
     // Total lpSupply for default pool
     uint256 public lpSupply = 0;
 
@@ -929,7 +929,6 @@ contract BBSmartChef4PCS is Ownable {
         IBEP20 _rewardToken,
         uint256 _rewardPerBlock,
         uint256 _startBlock,
-        uint256 _bonusEndBlock,
         ISmartChef _hostChef,
         IBEP20 _hostRewardToken,
         address _router,
@@ -939,8 +938,7 @@ contract BBSmartChef4PCS is Ownable {
         stakingToken = _stakingToken;
         rewardToken = _rewardToken;
         rewardPerBlock = _rewardPerBlock;
-        startBlock = _startBlock;
-        bonusEndBlock = _bonusEndBlock;
+        startBlock = _startBlock != 0 ? _startBlock : block.number;
         router = IUniswapV2Router(_router);
         swapPath = _path;
 
@@ -961,14 +959,6 @@ contract BBSmartChef4PCS is Ownable {
         
         require(address(_hostRewardToken) != address(0), "_hostRewardToken can't be 0x");
         _hostRewardToken.safeApprove(address(_router), type(uint256).max);
-    }
-
-    function stopReward() external onlyOwner {
-        bonusEndBlock = block.number;
-    }
-    
-    function setRewardEndBlock(uint256 _bonusEndBlock) external onlyOwner {
-        bonusEndBlock = _bonusEndBlock;
     }
     
     function setRewardPerBlock(uint256 _rewardPerBlock) external onlyOwner {
@@ -1035,14 +1025,8 @@ contract BBSmartChef4PCS is Ownable {
     }
 
     // Return reward multiplier over the given _from to _to block.
-    function getMultiplier(uint256 _from, uint256 _to) public view returns (uint256) {
-        if (_to <= bonusEndBlock) {
-            return _to.sub(_from);
-        } else if (_from >= bonusEndBlock) {
-            return 0;
-        } else {
-            return bonusEndBlock.sub(_from);
-        }
+    function getMultiplier(uint256 _from, uint256 _to) public pure returns (uint256) {
+        return _to.sub(_from);
     }
 
     // View function to see pending Reward on frontend.
