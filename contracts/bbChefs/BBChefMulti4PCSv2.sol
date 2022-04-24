@@ -991,6 +991,11 @@ contract BBChefMulti4PCSv2 is Ownable {
         updatePool(_pid);
     }
 
+    function setExtraRewardPerBlock(uint256 _pid, uint256 _extraRewardPerBlock) external onlyOwner {
+        // it will be active after next deposit/withdrawal
+        extraRewardPerBlock[_pid] = _extraRewardPerBlock;
+    }
+
     function setHostRewardDistPercent(uint256 _percent) external onlyOwner {
         hostRewardDistPercent = _percent;
     }

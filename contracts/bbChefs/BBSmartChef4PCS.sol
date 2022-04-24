@@ -902,6 +902,7 @@ contract BBSmartChef4PCS is Ownable {
 
     // MCRN tokens created per block.
     uint256 public rewardPerBlock;
+    uint256 public extraRewardPerBlock = 0;
 
     uint256 lastRewardBlock;  // Last block number that MCRNs distribution occurs.
     uint256 accMacaronPerShare; // Accumulated MCRNs per share, times 1e12. See below.
@@ -1032,6 +1033,10 @@ contract BBSmartChef4PCS is Ownable {
         updatePool();
     }
 
+    function setExtraRewardPerBlock(uint256 _extraRewardPerBlock) external onlyOwner {
+        extraRewardPerBlock = _extraRewardPerBlock;
+    }
+
     function setHostRewardDistPercent(uint256 _percent) external onlyOwner {
         hostRewardDistPercent = _percent;
     }
@@ -1097,6 +1102,7 @@ contract BBSmartChef4PCS is Ownable {
 
     function updateRewardPerBlockByStrategy() internal {
         rewardPerBlock = calculatedRewardPerBlockForHost(activeHostId, lpSupply);
+        rewardPerBlock = rewardPerBlock.add(extraRewardPerBlock);
         updatePool();
     }
 
