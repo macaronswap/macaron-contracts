@@ -295,7 +295,7 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     IERC20 public macaron;
     
     address public burnAddress = 0x000000000000000000000000000000000000dEaD;
-    uint256 public burnAmountForWhitelist = 1 ether;
+    uint256 public burnAmountForWhitelist = 20 ether;
     uint256 public burnedTotal;
     
     // Address where funds are collected
@@ -321,8 +321,8 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
         uint256 claimedTokenAmount;
     }
     
-    uint256 public minCapPerUser = 81054000000000000;
-    uint256 public maxCapPerUser = 8105400000000000000;
+    uint256 public minCapPerUser = 10000000000000000000000;
+    uint256 public maxCapPerUser = 100000000000000000000000;
     uint256 public releasedPercent = 0;
     uint256 public releaseBlock;
     uint256 public startBlock;
@@ -507,6 +507,12 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
     function removeWhitelistParticipant(address participant) external onlyOwner {
       whitelist[participant] = false;
     }
+
+    function removeWhitelistParticipants(address[] memory participants) external onlyOwner {
+        for(uint i=0; i<participants.length; i++) {
+            whitelist[participants[i]] = false;
+        }
+    }
     
     /**
      * @notice Burn 1 MCRN and join whitelist
@@ -591,5 +597,14 @@ contract MacaronSwapIFOv1 is ReentrancyGuard, Ownable {
         require(_tokenAddress != address(offeringToken), "Cannot be offering token");
 
         IERC20(_tokenAddress).safeTransfer(address(msg.sender), _tokenAmount);
+    }
+
+    /**
+     * @notice Withdraw unexpected tokens sent to the Macaron Vault
+     */
+    function inCaseNativeGetStuck() external onlyOwner {
+        uint256 amount = address(this).balance;
+        (bool success, ) = address(msg.sender).call{value: amount}("");
+        require(success, "transfer failed");
     }
 }
