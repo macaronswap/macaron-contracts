@@ -576,19 +576,19 @@ abstract contract Pausable is Context {
     }
 }
 
-interface IMasterChefV2 {
+interface IMasterChef {
     function deposit(uint256 _pid, uint256 _amount) external;
 
     function withdraw(uint256 _pid, uint256 _amount) external;
 
-    function pendingCake(uint256 _pid, address _user) external view returns (uint256);
+    function pendingMacaron(uint256 _pid, address _user) external view returns (uint256);
 
     function userInfo(uint256 _pid, address _user) external view returns (uint256, uint256);
 
     function emergencyWithdraw(uint256 _pid) external;
 }
 
-interface IVCake {
+interface IVMacaron {
     function deposit(
         address _user,
         uint256 _amount,
@@ -599,7 +599,7 @@ interface IVCake {
 }
 
 interface IBoostContract {
-    function onCakePoolUpdate(
+    function onMacaronPoolUpdate(
         address _user,
         uint256 _lockedAmount,
         uint256 _lockedDuration,
@@ -625,10 +625,10 @@ contract LongTermStakingPool is Ownable, Pausable {
 
     IERC20 public immutable token; // macaron token.
 
-    IMasterChefV2 public immutable masterchefV2;
+    IMasterChef public immutable masterchef;
 
     address public boostContract; // boost contract used in Masterchef.
-    address public VCake;
+    address public VMacaron;
 
     mapping(address => UserInfo) public userInfo;
     mapping(address => bool) public freePerformanceFeeUsers; // free performance fee users.
@@ -639,7 +639,7 @@ contract LongTermStakingPool is Ownable, Pausable {
     address public admin;
     address public treasury;
     address public operator;
-    uint256 public cakePoolPID;
+    uint256 public macaronPoolPID;
     uint256 public totalBoostDebt; // total boost debt.
     uint256 public totalLockedAmount; // total lock amount.
 
@@ -685,7 +685,7 @@ contract LongTermStakingPool is Ownable, Pausable {
     event NewTreasury(address treasury);
     event NewOperator(address operator);
     event NewBoostContract(address boostContract);
-    event NewVCakeContract(address VCake);
+    event NewVMacaronContract(address VMacaron);
     event FreeFeeUser(address indexed user, bool indexed free);
     event NewPerformanceFee(uint256 performanceFee);
     event NewPerformanceFeeContract(uint256 performanceFeeContract);
@@ -702,26 +702,26 @@ contract LongTermStakingPool is Ownable, Pausable {
     /**
      * @notice Constructor
      * @param _token: Macaron token contract
-     * @param _masterchefV2: MasterChefV2 contract
+     * @param _masterchef: MasterChef contract
      * @param _admin: address of the admin
      * @param _treasury: address of the treasury (collects fees)
      * @param _operator: address of operator
-     * @param _pid: macaron pool ID in MasterChefV2
+     * @param _pid: macaron pool ID in MasterChef
      */
     constructor(
         IERC20 _token,
-        IMasterChefV2 _masterchefV2,
+        IMasterChef _masterchef,
         address _admin,
         address _treasury,
         address _operator,
         uint256 _pid
     ) {
         token = _token;
-        masterchefV2 = _masterchefV2;
+        masterchef = _masterchef;
         admin = _admin;
         treasury = _treasury;
         operator = _operator;
-        cakePoolPID = _pid;
+        macaronPoolPID = _pid;
     }
 
     /**
@@ -733,8 +733,8 @@ contract LongTermStakingPool is Ownable, Pausable {
         uint256 balance = dummyToken.balanceOf(msg.sender);
         require(balance != 0, "Balance must exceed 0");
         dummyToken.safeTransferFrom(msg.sender, address(this), balance);
-        dummyToken.approve(address(masterchefV2), balance);
-        masterchefV2.deposit(cakePoolPID, balance);
+        dummyToken.approve(address(masterchef), balance);
+        masterchef.deposit(macaronPoolPID, balance);
         emit Init();
     }
 
@@ -749,7 +749,7 @@ contract LongTermStakingPool is Ownable, Pausable {
     /**
      * @notice Checks if the msg.sender is either the macaron owner address or the operator address.
      */
-    modifier onlyOperatorOrCakeOwner(address _user) {
+    modifier onlyOperatorOrMacaronOwner(address _user) {
         require(msg.sender == _user || msg.sender == operator, "Not operator or macaron owner");
         _;
     }
@@ -762,7 +762,7 @@ contract LongTermStakingPool is Ownable, Pausable {
         if (boostContract != address(0)) {
             UserInfo storage user = userInfo[_user];
             uint256 lockDuration = user.lockEndTime - user.lockStartTime;
-            IBoostContract(boostContract).onCakePoolUpdate(
+            IBoostContract(boostContract).onMacaronPoolUpdate(
                 _user,
                 user.lockedAmount,
                 lockDuration,
@@ -851,7 +851,7 @@ contract LongTermStakingPool is Ownable, Pausable {
      * @dev Only possible when contract not paused.
      * @param _user: User address
      */
-    function unlock(address _user) external onlyOperatorOrCakeOwner(_user) whenNotPaused {
+    function unlock(address _user) external onlyOperatorOrMacaronOwner(_user) whenNotPaused {
         UserInfo storage user = userInfo[_user];
         require(user.locked && user.lockEndTime < block.timestamp, "Cannot unlock yet");
         depositOperation(0, 0, _user);
@@ -897,8 +897,8 @@ contract LongTermStakingPool is Ownable, Pausable {
         require(_lockDuration == 0 || totalLockDuration >= MIN_LOCK_DURATION, "Minimum lock period is one week");
         require(totalLockDuration <= MAX_LOCK_DURATION, "Maximum lock period exceeded");
 
-        if (VCake != address(0)) {
-            IVCake(VCake).deposit(_user, _amount, _lockDuration);
+        if (VMacaron != address(0)) {
+            IVMacaron(VMacaron).deposit(_user, _amount, _lockDuration);
         }
 
         // Harvest tokens from Masterchef.
@@ -1015,8 +1015,8 @@ contract LongTermStakingPool is Ownable, Pausable {
         require(_shares <= user.shares, "Withdraw amount exceeds balance");
         require(user.lockEndTime < block.timestamp, "Still in lock");
 
-        if (VCake != address(0)) {
-            IVCake(VCake).withdraw(msg.sender);
+        if (VMacaron != address(0)) {
+            IVMacaron(VMacaron).withdraw(msg.sender);
         }
 
         // Calculate the percent of withdraw shares, when unlocking or calculating the Performance fee, the shares will be updated.
@@ -1080,10 +1080,10 @@ contract LongTermStakingPool is Ownable, Pausable {
      * @notice Harvest pending MCRN tokens from MasterChef
      */
     function harvest() internal {
-        uint256 pendingCake = masterchefV2.pendingCake(cakePoolPID, address(this));
-        if (pendingCake > 0) {
+        uint256 pendingMacaron = masterchef.pendingMacaron(macaronPoolPID, address(this));
+        if (pendingMacaron > 0) {
             uint256 balBefore = available();
-            masterchefV2.withdraw(cakePoolPID, 0);
+            masterchef.withdraw(macaronPoolPID, 0);
             uint256 balAfter = available();
             emit Harvest(msg.sender, (balAfter - balBefore));
         }
@@ -1130,13 +1130,13 @@ contract LongTermStakingPool is Ownable, Pausable {
     }
 
     /**
-     * @notice Set VCake Contract address
+     * @notice Set VMacaron Contract address
      * @dev Callable by the contract admin.
      */
-    function setVCakeContract(address _VCake) external onlyAdmin {
-        require(_VCake != address(0), "Cannot be zero address");
-        VCake = _VCake;
-        emit NewVCakeContract(VCake);
+    function setVMacaronContract(address _VMacaron) external onlyAdmin {
+        require(_VMacaron != address(0), "Cannot be zero address");
+        VMacaron = _VMacaron;
+        emit NewVMacaronContract(VMacaron);
     }
 
     /**
@@ -1330,7 +1330,7 @@ contract LongTermStakingPool is Ownable, Pausable {
     function calculatePerformanceFee(address _user) public view returns (uint256) {
         UserInfo storage user = userInfo[_user];
         if (user.shares > 0 && !user.locked && !freePerformanceFeeUsers[_user]) {
-            uint256 pool = balanceOf() + calculateTotalPendingCakeRewards();
+            uint256 pool = balanceOf() + calculateTotalPendingMacaronRewards();
             uint256 totalAmount = (user.shares * pool) / totalShares;
             uint256 earnAmount = totalAmount - user.macaronAtLastUserAction;
             uint256 feeRate = performanceFee;
@@ -1356,7 +1356,7 @@ contract LongTermStakingPool is Ownable, Pausable {
             !freeOverdueFeeUsers[_user] &&
             ((user.lockEndTime + UNLOCK_FREE_DURATION) < block.timestamp)
         ) {
-            uint256 pool = balanceOf() + calculateTotalPendingCakeRewards();
+            uint256 pool = balanceOf() + calculateTotalPendingMacaronRewards();
             uint256 currentAmount = (pool * (user.shares)) / totalShares - user.userBoostedShare;
             uint256 earnAmount = currentAmount - user.lockedAmount;
             uint256 overdueDuration = block.timestamp - user.lockEndTime - UNLOCK_FREE_DURATION;
@@ -1392,7 +1392,7 @@ contract LongTermStakingPool is Ownable, Pausable {
             _shares = user.shares;
         }
         if (!freeWithdrawFeeUsers[msg.sender] && (block.timestamp < user.lastDepositedTime + withdrawFeePeriod)) {
-            uint256 pool = balanceOf() + calculateTotalPendingCakeRewards();
+            uint256 pool = balanceOf() + calculateTotalPendingMacaronRewards();
             uint256 sharesPercent = (_shares * PRECISION_FACTOR) / user.shares;
             uint256 currentTotalAmount = (pool * (user.shares)) /
                 totalShares -
@@ -1413,13 +1413,13 @@ contract LongTermStakingPool is Ownable, Pausable {
      * @notice Calculates the total pending rewards that can be harvested
      * @return Returns total pending macaron rewards
      */
-    function calculateTotalPendingCakeRewards() public view returns (uint256) {
-        uint256 amount = masterchefV2.pendingCake(cakePoolPID, address(this));
+    function calculateTotalPendingMacaronRewards() public view returns (uint256) {
+        uint256 amount = masterchef.pendingMacaron(macaronPoolPID, address(this));
         return amount;
     }
 
     function getPricePerFullShare() external view returns (uint256) {
-        return totalShares == 0 ? 1e18 : (((balanceOf() + calculateTotalPendingCakeRewards()) * (1e18)) / totalShares);
+        return totalShares == 0 ? 1e18 : (((balanceOf() + calculateTotalPendingMacaronRewards()) * (1e18)) / totalShares);
     }
 
     /**
