@@ -794,11 +794,7 @@ interface IMasterChef {
 
     function withdraw(uint256 _pid, uint256 _amount) external;
 
-    function enterStaking(uint256 _amount) external;
-
-    function leaveStaking(uint256 _amount) external;
-
-    function pendingCake(uint256 _pid, address _user) external view returns (uint256);
+    function pendingBanana(uint256 _pid, address _user) external view returns (uint256);
 
     function userInfo(uint256 _pid, address _user) external view returns (uint256, uint256);
 
@@ -929,7 +925,7 @@ contract BananaVaultOnMacaronV2 is Ownable, Pausable {
      * @dev Only possible when contract not paused.
      */
     function harvest() external notContract whenNotPaused {
-        IMasterChef(masterchef).leaveStaking(0);
+        IMasterChef(masterchef).deposit(0, 0);
 
         uint256 bal = available();
         uint256 currentPerformanceFee = bal.mul(performanceFee).div(10000);
@@ -1044,7 +1040,7 @@ contract BananaVaultOnMacaronV2 is Ownable, Pausable {
      * @return Expected reward to collect in CAKE
      */
     function calculateHarvestCakeRewards() external view returns (uint256) {
-        uint256 amount = IMasterChef(masterchef).pendingCake(0, address(this));
+        uint256 amount = IMasterChef(masterchef).pendingBanana(0, address(this));
         amount = amount.add(available());
         uint256 currentCallFee = amount.mul(callFee).div(10000);
 
@@ -1056,7 +1052,7 @@ contract BananaVaultOnMacaronV2 is Ownable, Pausable {
      * @return Returns total pending cake rewards
      */
     function calculateTotalPendingCakeRewards() external view returns (uint256) {
-        uint256 amount = IMasterChef(masterchef).pendingCake(0, address(this));
+        uint256 amount = IMasterChef(masterchef).pendingBanana(0, address(this));
         amount = amount.add(available());
 
         return amount;
@@ -1085,7 +1081,7 @@ contract BananaVaultOnMacaronV2 is Ownable, Pausable {
         uint256 bal = available();
         if (bal < currentAmount) {
             uint256 balWithdraw = currentAmount.sub(bal);
-            IMasterChef(masterchef).leaveStaking(balWithdraw);
+            IMasterChef(masterchef).withdraw(0, balWithdraw);
             uint256 balAfter = available();
             uint256 diff = balAfter.sub(bal);
             if (diff < balWithdraw) {
@@ -1135,7 +1131,7 @@ contract BananaVaultOnMacaronV2 is Ownable, Pausable {
     function _earn() internal {
         uint256 bal = available();
         if (bal > 0) {
-            IMasterChef(masterchef).enterStaking(bal);
+            IMasterChef(masterchef).deposit(0, bal);
         }
     }
 
