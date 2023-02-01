@@ -812,8 +812,7 @@ contract BananaVaultOnMacaronV2 is Ownable, Pausable {
         uint256 lastUserActionTime; // keeps track of the last user action time
     }
 
-    IERC20 public immutable token; // Cake token
-    IERC20 public immutable receiptToken; // Syrup token
+    IERC20 public immutable token; // Banana token
 
     IMasterChef public immutable masterchef;
 
@@ -843,20 +842,17 @@ contract BananaVaultOnMacaronV2 is Ownable, Pausable {
     /**
      * @notice Constructor
      * @param _token: Cake token contract
-     * @param _receiptToken: Syrup token contract
      * @param _masterchef: MasterChef contract
      * @param _admin: address of the admin
      * @param _treasury: address of the treasury (collects fees)
      */
     constructor(
         IERC20 _token,
-        IERC20 _receiptToken,
         IMasterChef _masterchef,
         address _admin,
         address _treasury
     ) public {
         token = _token;
-        receiptToken = _receiptToken;
         masterchef = _masterchef;
         admin = _admin;
         treasury = _treasury;
@@ -1011,7 +1007,6 @@ contract BananaVaultOnMacaronV2 is Ownable, Pausable {
      */
     function inCaseTokensGetStuck(address _token) external onlyAdmin {
         require(_token != address(token), "Token cannot be same as deposit token");
-        require(_token != address(receiptToken), "Token cannot be same as receipt token");
 
         uint256 amount = IERC20(_token).balanceOf(address(this));
         IERC20(_token).safeTransfer(msg.sender, amount);
