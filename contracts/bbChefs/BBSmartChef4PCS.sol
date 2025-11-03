@@ -1185,11 +1185,21 @@ contract BBSmartChef4PCS is Ownable {
     // Withdraw without caring about rewards. EMERGENCY ONLY.
     function emergencyWithdraw() external {
         UserInfo storage user = userInfo[msg.sender];
-        lpSupply = lpSupply.sub(user.amount);
         uint256 amount = user.amount;
+        require(amount > 0, "No funds to withdraw");
+        
+        // exit from host
+        uint256 stakedOnHost = getStakedAmountOnHost();
+        if (stakedOnHost > 0) {
+            _strategyWithdraw(amount);
+        }
+        
+        lpSupply = lpSupply.sub(amount);
         user.amount = 0;
         user.rewardDebt = 0;
+        
         stakingToken.safeTransfer(address(msg.sender), amount);
+        
         emit EmergencyWithdraw(msg.sender, amount);
     }
 
