@@ -1186,10 +1186,11 @@ contract BBSmartChef4PCS is Ownable {
     function emergencyWithdraw() external {
         UserInfo storage user = userInfo[msg.sender];
         lpSupply = lpSupply.sub(user.amount);
+        uint256 amount = user.amount;
         user.amount = 0;
         user.rewardDebt = 0;
-        stakingToken.safeTransfer(address(msg.sender), user.amount);
-        emit EmergencyWithdraw(msg.sender, user.amount);
+        stakingToken.safeTransfer(address(msg.sender), amount);
+        emit EmergencyWithdraw(msg.sender, amount);
     }
 
     // Withdraw reward. EMERGENCY ONLY.
